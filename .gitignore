@@ -50,3 +50,6 @@ run_*.js
 test_*.js
 trace_*.js
 visualize_*.js
+
+# Disallow SMS ROMs
+**/*.sms
