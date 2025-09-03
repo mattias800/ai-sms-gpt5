@@ -11,7 +11,13 @@
     "format:fix": "prettier --write .",
     "test": "vitest run --reporter=dot --coverage",
     "test:watch": "vitest",
-    "ci": "npm run lint && npm run typecheck && npm run build && npm run test"
+    "test:timing": "npm run build && npx tsx tools/verify_z80_timing.ts",
+    "test:vdp": "npm run build && npx tsx tools/verify_vdp_timing.ts",
+    "test:all": "npm run build && npm run test:timing && npm run test:vdp",
+    "verify": "npm run test:all",
+    "benchmark": "npm run build && npx tsx test/benchmark.ts",
+    "trace": "npm run build && npx tsx tools/trace_execution.ts",
+    "ci": "npm run lint && npm run typecheck && npm run build && npm run test && npm run verify"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",

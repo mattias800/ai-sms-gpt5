@@ -289,6 +289,12 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       if (s.line >= s.linesPerFrame) {
         // New frame
         s.line = 0;
+        // Clear VBlank flag at start of new frame if it wasn't read
+        s.status &= ~0x80;
+        // Also clear IRQ if VBlank flag was cleared
+        if (((s.regs[1] ?? 0) & 0x20) !== 0 && (s.status & 0x80) === 0) {
+          s.irqVLine = false;
+        }
       }
     }
     // Keep hcScaled within range even if cpuCycles were very large (avoid drift)
