@@ -41,7 +41,7 @@ describe('Z80 edges and branches', (): void => {
         0x90, // SUB B
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     // Run until HALT

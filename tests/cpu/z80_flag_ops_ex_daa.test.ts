@@ -12,13 +12,17 @@ describe('Z80 accumulator rotates/flag ops, EX/EXX, DAA', (): void => {
     // LD A,0x81; RLCA; LD A,0x01; RRCA
     mem.set([0x3e, 0x81, 0x07, 0x3e, 0x01, 0x0f], 0x0000);
     const cpu = createZ80({ bus });
-    let c = step(cpu); expect(c).toBe(7); // LD A,0x81
-    c = step(cpu); expect(c).toBe(4); // RLCA
+    let c = step(cpu);
+    expect(c).toBe(7); // LD A,0x81
+    c = step(cpu);
+    expect(c).toBe(4); // RLCA
     let st = cpu.getState();
     expect(st.a).toBe(0x03);
     expect((st.f & FLAG_C) !== 0).toBe(true);
-    c = step(cpu); expect(c).toBe(7); // LD A,0x01
-    c = step(cpu); expect(c).toBe(4); // RRCA
+    c = step(cpu);
+    expect(c).toBe(7); // LD A,0x01
+    c = step(cpu);
+    expect(c).toBe(4); // RRCA
     st = cpu.getState();
     expect(st.a).toBe(0x80);
     expect((st.f & FLAG_C) !== 0).toBe(true);
@@ -33,14 +37,16 @@ describe('Z80 accumulator rotates/flag ops, EX/EXX, DAA', (): void => {
     // Seed A=0x80 and C=1
     const s0 = cpu.getState();
     cpu.setState({ ...s0, a: 0x80, f: s0.f | FLAG_C });
-    let c = step(cpu); expect(c).toBe(4);
+    let c = step(cpu);
+    expect(c).toBe(4);
     let st = cpu.getState();
     expect(st.a).toBe(0x01);
     expect((st.f & FLAG_C) !== 0).toBe(true);
 
     // Seed A=0x01 and C=1 for RRA
     cpu.setState({ ...st, a: 0x01, f: (st.f | FLAG_C) & 0xff });
-    c = step(cpu); expect(c).toBe(4);
+    c = step(cpu);
+    expect(c).toBe(4);
     st = cpu.getState();
     expect(st.a).toBe(0x80);
     expect((st.f & FLAG_C) !== 0).toBe(true);
@@ -107,14 +113,26 @@ describe('Z80 accumulator rotates/flag ops, EX/EXX, DAA', (): void => {
       f: 0x34,
       a_: 0x56,
       f_: 0x78,
-      b: 1, c: 2, d: 3, e: 4, h: 5, l: 6,
-      b_: 0xa, c_: 0xb, d_: 0xc, e_: 0xd, h_: 0xe, l_: 0xf,
+      b: 1,
+      c: 2,
+      d: 3,
+      e: 4,
+      h: 5,
+      l: 6,
+      b_: 0xa,
+      c_: 0xb,
+      d_: 0xc,
+      e_: 0xd,
+      h_: 0xe,
+      l_: 0xf,
     });
     // EX AF,AF'
     step(cpu);
     let st = cpu.getState();
-    expect(st.a).toBe(0x56); expect(st.f).toBe(0x78);
-    expect(st.a_).toBe(0x12); expect(st.f_).toBe(0x34);
+    expect(st.a).toBe(0x56);
+    expect(st.f).toBe(0x78);
+    expect(st.a_).toBe(0x12);
+    expect(st.f_).toBe(0x34);
     // EXX
     step(cpu);
     st = cpu.getState();
@@ -122,4 +140,3 @@ describe('Z80 accumulator rotates/flag ops, EX/EXX, DAA', (): void => {
     expect([st.b_, st.c_, st.d_, st.e_, st.h_, st.l_]).toEqual([1, 2, 3, 4, 5, 6]);
   });
 });
-

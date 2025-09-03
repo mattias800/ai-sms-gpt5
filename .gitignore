@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.DS_Store
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+*.js
+*.js.map
+!vitest.config.ts
+!.eslintrc.cjs
+!.prettierrc.cjs
+
+# ROM files
+*.sms
+*.gg
+*.gb
+*.gbc
+
+# Test artifacts
+*.png
+*.json
+!package.json
+!tsconfig.json
+!alex_kidd_frame.png.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Scripts and tools
+scripts/
+tools/
+
+# Debug files
+debug_*.js
+analyze_*.js
+check_*.js
+find_*.js
+fix_*.js
+run_*.js
+test_*.js
+trace_*.js
+visualize_*.js

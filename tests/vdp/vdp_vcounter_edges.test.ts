@@ -9,16 +9,16 @@ describe('VDP VCounter edges and wrap', (): void => {
     const lpf = gs0.linesPerFrame as number;
 
     // Line starts at 0
-    expect((vdp.readPort(0x7f) & 0xff)).toBe(0x00);
+    expect(vdp.readPort(0x7f) & 0xff).toBe(0x00);
 
     // Advance one full line
     vdp.tickCycles(cpl);
-    expect((vdp.readPort(0x7f) & 0xff)).toBe(0x01);
+    expect(vdp.readPort(0x7f) & 0xff).toBe(0x01);
 
     // Advance to the last line before wrap
     vdp.tickCycles((lpf - 2) * cpl);
     const vBeforeWrap = vdp.readPort(0x7f) & 0xff; // should be lpf-1
-    expect(vBeforeWrap).toBe(((lpf - 1) & 0xff));
+    expect(vBeforeWrap).toBe((lpf - 1) & 0xff);
 
     // Advance one more line to wrap to 0
     vdp.tickCycles(cpl);
@@ -26,4 +26,3 @@ describe('VDP VCounter edges and wrap', (): void => {
     expect(vAfterWrap).toBe(0x00);
   });
 });
-

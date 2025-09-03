@@ -55,4 +55,3 @@ describe('Flags and conditional branch coverage', (): void => {
     expect(cpu.getState().pc).toBe(0x0002);
   });
 });
-

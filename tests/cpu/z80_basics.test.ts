@@ -52,7 +52,7 @@ describe('Z80 basic ops', (): void => {
         0x7e, // LD A,(HL)
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
 
@@ -113,7 +113,7 @@ describe('Z80 basic ops', (): void => {
         0x8f, // CP 0x8F
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
 

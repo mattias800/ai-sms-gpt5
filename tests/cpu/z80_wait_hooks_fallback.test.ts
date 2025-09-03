@@ -14,7 +14,7 @@ describe('Z80 wait-state hooks fallback branches', (): void => {
     const ws: WaitStateHooks = {
       enabled: true,
       onMemoryRead: () => 1, // opcode + immediate fetch => +2
-      onIOWrite: () => 3,    // IO write => +3
+      onIOWrite: () => 3, // IO write => +3
       includeWaitInCycles: true,
     };
     const cpu = createZ80({ bus, waitStates: ws });
@@ -26,4 +26,3 @@ describe('Z80 wait-state hooks fallback branches', (): void => {
     expect(cpu.getLastWaitCycles()).toBe(6);
   });
 });
-

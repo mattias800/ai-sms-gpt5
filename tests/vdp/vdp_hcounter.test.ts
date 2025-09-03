@@ -51,4 +51,3 @@ describe('VDP H/VCounter behavior', (): void => {
     expect(h).toBe(0xb0);
   });
 });
-

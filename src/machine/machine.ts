@@ -14,11 +14,13 @@ export interface MachineConfig {
   cart: Cartridge;
   wait?: MachineWaitConfig | undefined;
   bus?: { allowCartRam?: boolean } | undefined;
-  trace?: {
-    onTrace?: ((ev: import('../cpu/z80/z80.js').TraceEvent) => void) | undefined;
-    traceDisasm?: boolean | undefined;
-    traceRegs?: boolean | undefined;
-  } | undefined;
+  trace?:
+    | {
+        onTrace?: ((ev: import('../cpu/z80/z80.js').TraceEvent) => void) | undefined;
+        traceDisasm?: boolean | undefined;
+        traceRegs?: boolean | undefined;
+      }
+    | undefined;
   // Experimental CPU acceleration options
   fastBlocks?: boolean | undefined;
 }

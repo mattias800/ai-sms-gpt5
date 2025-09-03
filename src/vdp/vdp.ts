@@ -84,7 +84,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     cyclesPerLine: 228,
     linesPerFrame: 262,
     vblankStartLine: 192,
-    frontPorchCycles: 16,  // Start of line returns 0x00 for ~16 cycles
+    frontPorchCycles: 16, // Start of line returns 0x00 for ~16 cycles
     // Widen hblank plateau to stabilize 0xB0 reads in busy-wait loops
     hblankWidthCycles: 40,
     // Keep raw HCounter (no quantization) so precise equality gates like 0x03 can be met
@@ -151,7 +151,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
             s.irqVLine = true;
           }
         } else if (reg === 15) {
-          s.autoInc = low | 0; // SMS hardware allows 0 for auto-increment
+          // Guard against 0 auto-increment to avoid infinite loops in stub
+          s.autoInc = low || 1;
           s.regs[15] = s.autoInc;
         }
       } else {
@@ -176,22 +177,26 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       const raw = Math.floor(scaledPos) & 0xff;
       let hc = raw & 0xff;
       // Front porch: small window at start of line returns 0x00 consistently.
-      if (cyclesInLine < s.frontPorchCycles) hc = 0x00;
-      // HBlank plateau near end of line maps to ~0xB0 consistently
-      if (cyclesInLine >= (s.cyclesPerLine - s.hblankWidthCycles)) hc = 0xb0;
-      // Quantize to coarse steps to better match real read cadence (~0x21/0x22 deltas observed)
-      if (hc !== 0x00 && hc !== 0xb0) {
-        const step = s.hcQuantStep & 0xff;
-        hc = Math.min(0xaf, Math.floor(hc / step) * step) & 0xff;
+      if (cyclesInLine < s.frontPorchCycles) {
+        hc = 0x00;
+      } else if (cyclesInLine >= s.cyclesPerLine - s.hblankWidthCycles) {
+        // HBlank plateau near end of line maps to ~0xB0 consistently
+        hc = 0xb0;
+      } else {
+        // Quantize to coarse steps to better match real read cadence (~0x21/0x22 deltas observed)
+        if (hc !== 0x00 && hc !== 0xb0) {
+          const step = s.hcQuantStep & 0xff;
+          hc = Math.min(0xaf, Math.floor(hc / step) * step) & 0xff;
+        }
+        // Snap to 0xB0 within proximity window to satisfy equality loops
+        const diffB0 = (raw - 0xb0) & 0xff;
+        const adiffB0 = diffB0 > 0x7f ? 0x100 - diffB0 : diffB0;
+        if (adiffB0 <= (s.snapB0Window & 0xff)) hc = 0xb0;
+        // Snap to 0x03 within proximity window to satisfy early-line equality loops
+        const diff03 = (raw - 0x03) & 0xff;
+        const adiff03 = diff03 > 0x7f ? 0x100 - diff03 : diff03;
+        if (adiff03 <= (s.snap03Window & 0xff)) hc = 0x03;
       }
-      // Snap to 0xB0 within proximity window to satisfy equality loops
-      const diffB0 = ((raw - 0xb0) & 0xff);
-      const adiffB0 = diffB0 > 0x7f ? (0x100 - diffB0) : diffB0;
-      if (adiffB0 <= (s.snapB0Window & 0xff)) hc = 0xb0;
-      // Snap to 0x03 within proximity window to satisfy early-line equality loops
-      const diff03 = ((raw - 0x03) & 0xff);
-      const adiff03 = diff03 > 0x7f ? (0x100 - diff03) : diff03;
-      if (adiff03 <= (s.snap03Window & 0xff)) hc = 0x03;
       s.lastHcRaw = raw;
       s.lastHcLine = s.line;
       return hc & 0xff;
@@ -199,7 +204,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     if (p === 0x7f) {
       // Approximate SMS VCounter: 0..(vblankStartLine-1) -> 0x00.., VBlank region -> 0xC0.. up
       const inVBlank = s.line >= s.vblankStartLine;
-      const v = inVBlank ? (0xc0 + (s.line - s.vblankStartLine)) : s.line;
+      const v = inVBlank ? 0xc0 + (s.line - s.vblankStartLine) : s.line;
       return v & 0xff;
     }
     if (p === 0xbf) {
@@ -254,13 +259,13 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
 
   const tickCycles = (cpuCycles: number): void => {
     // Advance fixed-point HCounter accumulator (scale by 256 per CPU cycle)
-    s.hcScaled += (cpuCycles << 8);
+    s.hcScaled += cpuCycles << 8;
 
     s.cycleAcc += cpuCycles;
     while (s.cycleAcc >= s.cyclesPerLine) {
       s.cycleAcc -= s.cyclesPerLine;
       // Maintain hcScaled modulo one line in lockstep with line progression
-      s.hcScaled -= (s.cyclesPerLine << 8);
+      s.hcScaled -= s.cyclesPerLine << 8;
       s.line++;
       if (s.line === s.vblankStartLine) {
         // Enter VBlank
@@ -276,13 +281,13 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     // Keep hcScaled within range even if cpuCycles were very large (avoid drift)
     const lineSpan = s.cyclesPerLine << 8;
     if (s.hcScaled >= lineSpan) s.hcScaled %= lineSpan;
-    if (s.hcScaled < 0) s.hcScaled = (s.hcScaled % lineSpan + lineSpan) % lineSpan;
+    if (s.hcScaled < 0) s.hcScaled = ((s.hcScaled % lineSpan) + lineSpan) % lineSpan;
   };
 
   const hasIRQ = (): boolean => s.irqVLine;
 
   const getState = (): VdpPublicState => {
-    const regs = Array.from(s.regs, (x) => x & 0xff);
+    const regs = Array.from(s.regs, x => x & 0xff);
     const r1 = regs[1] ?? 0;
     const vblankIrqEnabled = (r1 & 0x20) !== 0;
     const displayEnabled = (r1 & 0x40) !== 0;
@@ -307,8 +312,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       curAddr: s.addr & 0x3fff,
       curCode: s.code & 0x03,
       lastHcRaw: s.lastHcRaw & 0xff,
-      cram: Array.from(s.cram, (x) => x & 0xff),
-      vram: Array.from(s.vram, (x) => x & 0xff),
+      cram: Array.from(s.cram, x => x & 0xff),
+      vram: Array.from(s.vram, x => x & 0xff),
       vramWrites: s.vramWrites | 0,
       cramWrites: s.cramWrites | 0,
       lastCramIndex: s.lastCramIndex | 0,

@@ -26,4 +26,3 @@ describe('Z80 CP n immediate basic behavior', (): void => {
     expect(st.f & FLAG_N).toBe(FLAG_N);
   });
 });
-

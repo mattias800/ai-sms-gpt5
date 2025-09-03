@@ -12,7 +12,10 @@ describe('Machine SMS wait-state model', (): void => {
   it('adds VDP IO write penalty to OUT (n),A for port 0xBE', (): void => {
     // Program: OUT (0xBE),A ; NOP
     const cart = romWith([0xd3, 0xbe, 0x00]);
-    const mach = createMachine({ cart, wait: { smsModel: true, includeWaitInCycles: true, vdpPenalty: 4 } as MachineConfig['wait'] });
+    const mach = createMachine({
+      cart,
+      wait: { smsModel: true, includeWaitInCycles: true, vdpPenalty: 4 } as MachineConfig['wait'],
+    });
     const cpu = mach.getCPU();
     const c = cpu.stepOne().cycles; // OUT immediate
     expect(c).toBe(11 + 4);
@@ -36,4 +39,3 @@ describe('Machine SMS wait-state model', (): void => {
     expect(c).toBe(11);
   });
 });
-

@@ -17,7 +17,7 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     const c = step(cpu); // INI
     expect(c).toBe(16);
     const st = cpu.getState();
-    expect(st.h << 8 | st.l).toBe(0x4001);
+    expect((st.h << 8) | st.l).toBe(0x4001);
     expect(st.b).toBe(0x01);
     expect(mem[0x4000]).toBe(0xff); // SimpleBus returns 0xff for reads
   });
@@ -35,7 +35,7 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     const c = step(cpu); // OUTI
     expect(c).toBe(16);
     const st = cpu.getState();
-    expect(st.h << 8 | st.l).toBe(0x4101);
+    expect((st.h << 8) | st.l).toBe(0x4101);
     expect(st.b).toBe(0x00);
   });
 
@@ -45,11 +45,13 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     // LD HL,0x4201; LD B,0x02; LD C,0x7f; ED AA (IND)
     mem.set([0x21, 0x01, 0x42, 0x06, 0x02, 0x0e, 0x7f, 0xed, 0xaa], 0x0000);
     const cpu = createZ80({ bus });
-    step(cpu); step(cpu); step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
     const c = step(cpu);
     expect(c).toBe(16);
     const st = cpu.getState();
-    expect(st.h << 8 | st.l).toBe(0x4200);
+    expect((st.h << 8) | st.l).toBe(0x4200);
     expect(st.b).toBe(0x01);
     expect(mem[0x4201]).toBe(0xff);
   });
@@ -60,11 +62,14 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     // LD HL,0x4301; LD B,0x02; LD C,0x7f; LD (HL),0x34; ED AB (OUTD)
     mem.set([0x21, 0x01, 0x43, 0x06, 0x02, 0x0e, 0x7f, 0x36, 0x34, 0xed, 0xab], 0x0000);
     const cpu = createZ80({ bus });
-    step(cpu); step(cpu); step(cpu); step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
     const c = step(cpu);
     expect(c).toBe(16);
     const st = cpu.getState();
-    expect(st.h << 8 | st.l).toBe(0x4300);
+    expect((st.h << 8) | st.l).toBe(0x4300);
     expect(st.b).toBe(0x01);
   });
 
@@ -74,13 +79,15 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     // LD HL,0x4400; LD B,0x02; LD C,0x7f; ED B2 (INIR)
     mem.set([0x21, 0x00, 0x44, 0x06, 0x02, 0x0e, 0x7f, 0xed, 0xb2], 0x0000);
     const cpu = createZ80({ bus });
-    step(cpu); step(cpu); step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
     const c1 = step(cpu);
     expect(c1).toBe(21);
     const c2 = step(cpu);
     expect(c2).toBe(16);
     const st = cpu.getState();
-    expect(st.h << 8 | st.l).toBe(0x4402);
+    expect((st.h << 8) | st.l).toBe(0x4402);
     expect(st.b).toBe(0x00);
     expect(mem[0x4400]).toBe(0xff);
     expect(mem[0x4401]).toBe(0xff);
@@ -93,15 +100,20 @@ describe('Z80 ED block I/O: INI/IND/INIR/INDR/OUTI/OUTD/OTIR/OTDR', (): void => 
     mem.set([0x21, 0x01, 0x45, 0x06, 0x02, 0x0e, 0x7f, 0x36, 0xaa, 0x2b, 0x36, 0xbb, 0x23, 0xed, 0xbb], 0x0000);
     const cpu = createZ80({ bus });
     // Steps: LD HL; LD B; LD C; LD (HL)=0xaa; DEC HL; LD (HL)=0xbb; INC HL; OTDR
-    step(cpu); step(cpu); step(cpu); step(cpu); step(cpu); step(cpu); step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
+    step(cpu);
     const c1 = step(cpu);
     expect(c1).toBe(21);
     const c2 = step(cpu);
     expect(c2).toBe(16);
     const st = cpu.getState();
     // HL decremented twice from 0x4501 -> 0x4500 -> 0x44ff
-    expect(st.h << 8 | st.l).toBe(0x44ff);
+    expect((st.h << 8) | st.l).toBe(0x44ff);
     expect(st.b).toBe(0x00);
   });
 });
-

@@ -506,4 +506,3 @@ describe('Z80 wait-states applied to reported cycles when enabled', (): void => 
     expect(st1.pc).toBe(0x0008);
   });
 });
-

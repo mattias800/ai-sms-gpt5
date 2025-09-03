@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+out/
+*.js
+!.eslintrc.cjs
+!.prettierrc.cjs
+!vitest.config.ts

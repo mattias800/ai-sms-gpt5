@@ -19,4 +19,3 @@ describe('Z80 IN A,(n) preserves carry flag', (): void => {
     expect((st.f & FLAG_C) !== 0).toBe(true);
   });
 });
-

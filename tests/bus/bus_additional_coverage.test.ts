@@ -33,7 +33,7 @@ describe('SmsBus additional coverage', (): void => {
 
   it('VDP mirror read maps odd/even low6=0x3F/0x3E to 0xBF/0xBE (excluding 0x3F/0x3E themselves)', (): void => {
     const vdp: IVDP = {
-      readPort: (p: number): number => (p & 0xff) === 0xbf ? 0xab : 0xcd,
+      readPort: (p: number): number => ((p & 0xff) === 0xbf ? 0xab : 0xcd),
       writePort: (_p: number, _v: number): void => {
         // no-op
       },

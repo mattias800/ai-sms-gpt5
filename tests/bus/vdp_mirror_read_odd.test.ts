@@ -12,4 +12,3 @@ describe('VDP mirror reads via odd ports map to 0xBF (status)', (): void => {
     expect(val >= 0 && val <= 0xff).toBe(true);
   });
 });
-

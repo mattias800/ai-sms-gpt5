@@ -60,4 +60,3 @@ describe('Additional DD/FD register mapping coverage', (): void => {
     expect(st.b).toBe(0x10);
   });
 });
-

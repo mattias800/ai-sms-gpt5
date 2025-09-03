@@ -11,4 +11,3 @@ describe('VDP display enable via reg1 bit6', (): void => {
     expect(st?.displayEnabled).toBe(true);
   });
 });
-

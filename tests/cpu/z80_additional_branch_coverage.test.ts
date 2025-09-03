@@ -48,4 +48,3 @@ describe('Additional branch coverage for Z80', (): void => {
     expect(cpu.getState().iy).toBe(0x1235);
   });
 });
-

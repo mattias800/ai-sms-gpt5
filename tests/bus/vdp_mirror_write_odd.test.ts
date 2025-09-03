@@ -13,4 +13,3 @@ describe('VDP mirror writes via odd ports map to 0xBF (control)', (): void => {
     expect(true).toBe(true);
   });
 });
-

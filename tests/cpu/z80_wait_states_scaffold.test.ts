@@ -66,4 +66,3 @@ describe('Z80 wait-state scaffolding (disabled by default)', (): void => {
     expect(cpu.getLastWaitCycles()).toBe(4);
   });
 });
-

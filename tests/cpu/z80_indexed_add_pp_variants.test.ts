@@ -14,12 +14,13 @@ describe('Z80 IX/IY ADD pp variants', (): void => {
     let st = cpu.getState();
     // Seed IY=0x1000, BC=0x0001, SP=0x0010
     cpu.setState({ ...st, iy: 0x1000, b: 0x00, c: 0x01, sp: 0x0010 });
-    let c = step(cpu); expect(c).toBe(15); // ADD IY,BC
+    let c = step(cpu);
+    expect(c).toBe(15); // ADD IY,BC
     st = cpu.getState();
     expect(st.iy).toBe(0x1001);
-    c = step(cpu); expect(c).toBe(15); // ADD IY,SP
+    c = step(cpu);
+    expect(c).toBe(15); // ADD IY,SP
     st = cpu.getState();
     expect(st.iy).toBe(0x1011);
   });
 });
-

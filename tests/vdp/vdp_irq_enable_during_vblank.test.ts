@@ -21,4 +21,3 @@ describe('VDP IRQ enable during active VBlank', (): void => {
     expect((vdp as any).hasIRQ()).toBe(true);
   });
 });
-

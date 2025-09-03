@@ -6,8 +6,10 @@ export interface TraceFormatOptions {
   uppercaseHex?: boolean; // hex letter casing
 }
 
-const hex2 = (v: number, upper: boolean): string => v.toString(16).padStart(2, '0')[upper ? 'toUpperCase' : 'toLowerCase']();
-const hex4 = (v: number, upper: boolean): string => v.toString(16).padStart(4, '0')[upper ? 'toUpperCase' : 'toLowerCase']();
+const hex2 = (v: number, upper: boolean): string =>
+  v.toString(16).padStart(2, '0')[upper ? 'toUpperCase' : 'toLowerCase']();
+const hex4 = (v: number, upper: boolean): string =>
+  v.toString(16).padStart(4, '0')[upper ? 'toUpperCase' : 'toLowerCase']();
 
 const flagsToString = (f: number): string => {
   const S = (f & 0x80) !== 0 ? 'S' : '.';
@@ -21,7 +23,8 @@ const flagsToString = (f: number): string => {
   return `${S}${Z}${F5}${H}${F3}${PV}${N}${C}`;
 };
 
-const bytesToHex = (bytes: number[], upper: boolean): string => bytes.map((b): string => hex2(b & 0xff, upper)).join(' ');
+const bytesToHex = (bytes: number[], upper: boolean): string =>
+  bytes.map((b): string => hex2(b & 0xff, upper)).join(' ');
 
 const regsToString = (r: RegsSnapshot, upper: boolean): string => {
   const AF = hex4(((r.a & 0xff) << 8) | (r.f & 0xff), upper);
@@ -66,4 +69,3 @@ export const createTraceCollector = (opts?: TraceFormatOptions): TraceCollector 
   };
   return { lines, onTrace };
 };
-

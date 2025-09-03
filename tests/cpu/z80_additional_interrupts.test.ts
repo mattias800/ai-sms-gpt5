@@ -47,4 +47,3 @@ describe('Z80 additional interrupt coverage', (): void => {
     expect(cpu.getState().pc).toBe(0x0038);
   });
 });
-

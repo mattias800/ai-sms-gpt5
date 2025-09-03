@@ -28,7 +28,6 @@ describe('Conservative I/O control scaffolding (0x3F) for controller reads', ():
     expect(bus.readIO8(0xdc) & 0x03).toBe(0x00);
     expect(bus.readIO8(0xdd) & 0x03).toBe(0x00);
     // Non-driven bits remain pulled-up
-    expect((bus.readIO8(0xdc) & 0xfc)).toBe(0xfc);
+    expect(bus.readIO8(0xdc) & 0xfc).toBe(0xfc);
   });
 });
-

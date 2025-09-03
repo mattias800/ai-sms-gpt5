@@ -11,7 +11,13 @@ describe('Z80 traceRegs snapshot', (): void => {
     // Program: LD B,0x12; NOP
     mem.set([0x06, 0x12, 0x00], 0x0000);
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); }, traceRegs: true });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+      traceRegs: true,
+    });
     expect(step(cpu)).toBe(7);
     expect(step(cpu)).toBe(4);
     expect(events.length).toBe(2);
@@ -28,7 +34,13 @@ describe('Z80 traceRegs snapshot', (): void => {
     // Program: IM 1; EI; HALT
     mem.set([0xed, 0x56, 0xfb, 0x76], 0x0000);
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); }, traceRegs: true });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+      traceRegs: true,
+    });
 
     step(cpu); // IM1
     step(cpu); // EI
@@ -45,4 +57,3 @@ describe('Z80 traceRegs snapshot', (): void => {
     expect(last.regs!.pc).toBe(0x0038);
   });
 });
-

@@ -5,7 +5,9 @@ import { createZ80 } from '../../src/cpu/z80/z80.js';
 const step = (cpu: ReturnType<typeof createZ80>): number => cpu.stepOne().cycles;
 
 // Helper to run N steps
-const run = (cpu: ReturnType<typeof createZ80>, n: number): void => { for (let i=0;i<n;i++) step(cpu); };
+const run = (cpu: ReturnType<typeof createZ80>, n: number): void => {
+  for (let i = 0; i < n; i++) step(cpu);
+};
 
 describe('Z80 IXH/IXL and IYH/IYL 8-bit ops (DD/FD prefix)', (): void => {
   it('LD IXH, n; LD IXL, n; LD A,IXH; LD B,IXL', (): void => {
@@ -32,12 +34,21 @@ describe('Z80 IXH/IXL and IYH/IYL 8-bit ops (DD/FD prefix)', (): void => {
     // Set IX = 0x207F initially via LD IX,nn
     // Then set A=1; ADD A,H (DD 84) -> A = 1 + 0x20 = 0x21
     // CP L (DD BD) compare with 0x7F
-    mem.set([
-      0xdd, 0x21, 0x7f, 0x20, // LD IX,207Fh
-      0x3e, 0x01,             // LD A,1
-      0xdd, 0x84,             // ADD A,H => IXH
-      0xdd, 0xbd              // CP L => IXL
-    ], 0x0000);
+    mem.set(
+      [
+        0xdd,
+        0x21,
+        0x7f,
+        0x20, // LD IX,207Fh
+        0x3e,
+        0x01, // LD A,1
+        0xdd,
+        0x84, // ADD A,H => IXH
+        0xdd,
+        0xbd, // CP L => IXL
+      ],
+      0x0000
+    );
     const cpu = createZ80({ bus });
 
     step(cpu); // LD IX,nn
@@ -60,12 +71,7 @@ describe('Z80 IXH/IXL and IYH/IYL 8-bit ops (DD/FD prefix)', (): void => {
     // DD 24    => INC H => INC IXH -> becomes 0x80 (sets S and PV)
     // FD 21 00 80 => IY=0x8000
     // FD 2D    => DEC L => DEC IYL -> 0xFF
-    mem.set([
-      0xdd, 0x26, 0x7f,
-      0xdd, 0x24,
-      0xfd, 0x21, 0x00, 0x80,
-      0xfd, 0x2d,
-    ], 0x0000);
+    mem.set([0xdd, 0x26, 0x7f, 0xdd, 0x24, 0xfd, 0x21, 0x00, 0x80, 0xfd, 0x2d], 0x0000);
     const cpu = createZ80({ bus });
 
     step(cpu); // LD IXH,7F
@@ -82,4 +88,3 @@ describe('Z80 IXH/IXL and IYH/IYL 8-bit ops (DD/FD prefix)', (): void => {
     expect((f & 0x02) !== 0).toBe(true); // N set
   });
 });
-

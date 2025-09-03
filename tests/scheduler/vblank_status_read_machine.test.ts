@@ -42,7 +42,7 @@ describe('Machine + VDP VBlank IRQ and status read behavior', (): void => {
     expect(vdp.hasIRQ()).toBe(false);
 
     // Advance to end of frame then back to next VBlank start; it should assert again next frame
-    const remainingLines = (LINES_PER_FRAME - (VBL_START + 10));
+    const remainingLines = LINES_PER_FRAME - (VBL_START + 10);
     mach.runCycles(remainingLines * cpl); // finish frame
     mach.runCycles(VBL_START * cpl); // next frame up to VBlank start
     expect(vdp.hasIRQ()).toBe(true);
@@ -69,4 +69,3 @@ describe('Machine + VDP VBlank IRQ and status read behavior', (): void => {
     expect(vdp.hasIRQ()).toBe(true);
   });
 });
-

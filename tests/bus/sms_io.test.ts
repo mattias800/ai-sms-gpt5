@@ -51,4 +51,3 @@ describe('SMS IO ports', (): void => {
     expect(bus.getLastPSG()).toBe(0x90);
   });
 });
-

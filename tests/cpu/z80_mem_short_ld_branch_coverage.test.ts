@@ -37,4 +37,3 @@ describe('Short memory LD paths and LD SP,HL branch coverage', (): void => {
     expect(cpu.getState().sp).toBe(0x1234);
   });
 });
-

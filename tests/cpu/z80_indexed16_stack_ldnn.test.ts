@@ -16,14 +16,16 @@ describe('Z80 IX/IY stack and (nn) transfers: PUSH/POP IX/IY, LD (nn),IX/IY and 
     cpu.setState({ ...st0, ix: 0xabcd, sp: 0x4000, iy: 0x0000 });
 
     // PUSH IX
-    let c = step(cpu); expect(c).toBe(15);
+    let c = step(cpu);
+    expect(c).toBe(15);
     let st = cpu.getState();
     expect(st.sp).toBe(0x3ffe);
     expect(bus.getMemory()[0x3ffe]).toBe(0xcd); // low byte at SP
     expect(bus.getMemory()[0x3fff]).toBe(0xab); // high byte at SP+1
 
     // POP IY
-    c = step(cpu); expect(c).toBe(14);
+    c = step(cpu);
+    expect(c).toBe(14);
     st = cpu.getState();
     expect(st.sp).toBe(0x4000);
     expect(st.iy).toBe(0xabcd);
@@ -44,12 +46,14 @@ describe('Z80 IX/IY stack and (nn) transfers: PUSH/POP IX/IY, LD (nn),IX/IY and 
     mem[0x9003] = 0x12; // high
 
     // LD (nn),IX
-    let c = step(cpu); expect(c).toBe(20);
+    let c = step(cpu);
+    expect(c).toBe(20);
     expect(mem[0x9000]).toBe(0x68);
     expect(mem[0x9001]).toBe(0x24);
 
     // LD IX,(nn)
-    c = step(cpu); expect(c).toBe(20);
+    c = step(cpu);
+    expect(c).toBe(20);
     st = cpu.getState();
     expect(st.ix).toBe(0x1234);
   });
@@ -69,14 +73,15 @@ describe('Z80 IX/IY stack and (nn) transfers: PUSH/POP IX/IY, LD (nn),IX/IY and 
     mem[0xa013] = 0xbe; // high
 
     // LD (nn),IY
-    let c = step(cpu); expect(c).toBe(20);
+    let c = step(cpu);
+    expect(c).toBe(20);
     expect(mem[0xa010]).toBe(0xbc);
     expect(mem[0xa011]).toBe(0x9a);
 
     // LD IY,(nn)
-    c = step(cpu); expect(c).toBe(20);
+    c = step(cpu);
+    expect(c).toBe(20);
     st = cpu.getState();
     expect(st.iy).toBe(0xbeef);
   });
 });
-

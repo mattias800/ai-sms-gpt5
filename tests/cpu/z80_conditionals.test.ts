@@ -36,7 +36,8 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     // Prepare stack with return address 0x1234
     let s = cpu.getState();
     const mem = bus.getMemory();
-    mem[0x8000] = 0x34; mem[0x8001] = 0x12;
+    mem[0x8000] = 0x34;
+    mem[0x8001] = 0x12;
     cpu.setState({ ...s, sp: 0x8000, f: (s.f | FLAG_Z) & 0xff });
     let c = step(cpu);
     expect(c).toBe(11);
@@ -161,4 +162,3 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     expect(cpu6.getState().pc).toBe(0x0003);
   });
 });
-

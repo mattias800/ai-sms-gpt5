@@ -38,7 +38,7 @@ describe('bit utils', (): void => {
         const c = u16(n);
         const d = u16(c);
         expect(c).toBe(d);
-      }),
+      })
     );
   });
   it('parity8 equals even parity of popcount', (): void => {
@@ -46,7 +46,7 @@ describe('bit utils', (): void => {
       fc.property(fc.integer({ min: 0, max: 0xff }), (n: number): void => {
         const even = (popcount8(n) & 1) === 0;
         expect(parity8(n)).toBe(even);
-      }),
+      })
     );
   });
 });

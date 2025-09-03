@@ -12,7 +12,13 @@ describe('Z80 trace disassembly integration', (): void => {
     mem.set([0x00, 0x36, 0x34, 0x76], 0x0000);
 
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); }, traceDisasm: true });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+      traceDisasm: true,
+    });
 
     // NOP
     expect(step(cpu)).toBe(4);
@@ -33,7 +39,13 @@ describe('Z80 trace disassembly integration', (): void => {
     // Program: EI; HALT
     mem.set([0xfb, 0x76], 0x0000);
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); }, traceDisasm: true });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+      traceDisasm: true,
+    });
 
     // EI and HALT
     step(cpu);
@@ -51,4 +63,3 @@ describe('Z80 trace disassembly integration', (): void => {
     expect(lastEv.text).toBeUndefined();
   });
 });
-

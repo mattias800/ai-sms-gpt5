@@ -13,7 +13,7 @@ describe('Z80 DAA subtract path (N=1) coverage', (): void => {
     const cpu = createZ80({ bus });
     // Simulate A=0x0f after a BCD subtraction with half-borrow
     const s0 = cpu.getState();
-    cpu.setState({ ...s0, a: 0x0f, f: (FLAG_N | FLAG_H) });
+    cpu.setState({ ...s0, a: 0x0f, f: FLAG_N | FLAG_H });
     const c = step(cpu);
     expect(c).toBe(4);
     const st = cpu.getState();
@@ -22,4 +22,3 @@ describe('Z80 DAA subtract path (N=1) coverage', (): void => {
     expect((st.f & FLAG_H) !== 0).toBe(false); // H cleared after adjust
   });
 });
-

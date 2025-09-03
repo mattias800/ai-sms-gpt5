@@ -53,7 +53,8 @@ describe('Z80 timing alignment (selected instructions)', (): void => {
     // Prepare stack with return address 0x1234
     st = cpu.getState();
     cpu.setState({ ...st, pc: 0x1000, sp: 0x9000 });
-    mem[0x9000] = 0x34; mem[0x9001] = 0x12;
+    mem[0x9000] = 0x34;
+    mem[0x9001] = 0x12;
     // Taken when Z=0
     cpu.setState({ ...cpu.getState(), f: 0x00 });
     let c = step(cpu);
@@ -75,7 +76,8 @@ describe('Z80 timing alignment (selected instructions)', (): void => {
     // Set HL and memory value; RLC (HL)
     const st = cpu.getState();
     cpu.setState({ ...st, pc: 0x0100, h: 0x20, l: 0x00 });
-    mem[0x0100] = 0xcb; mem[0x0101] = 0x06; // CB 06 => RLC (HL)
+    mem[0x0100] = 0xcb;
+    mem[0x0101] = 0x06; // CB 06 => RLC (HL)
     c = step(cpu);
     expect(c).toBe(15);
   });
@@ -91,7 +93,8 @@ describe('Z80 timing alignment (selected instructions)', (): void => {
     // BIT 3,(HL) => CB 5E
     const st = cpu.getState();
     cpu.setState({ ...st, pc: 0x0100, h: 0x40, l: 0x00 });
-    mem[0x0100] = 0xcb; mem[0x0101] = 0x5e;
+    mem[0x0100] = 0xcb;
+    mem[0x0101] = 0x5e;
     c = step(cpu);
     expect(c).toBe(12);
   });
@@ -104,7 +107,8 @@ describe('Z80 timing alignment (selected instructions)', (): void => {
     const cpu = createZ80({ bus });
     const st = cpu.getState();
     cpu.setState({ ...st, sp: 0x8000, h: 0x12, l: 0x34 });
-    mem[0x8000] = 0x78; mem[0x8001] = 0x56;
+    mem[0x8000] = 0x78;
+    mem[0x8001] = 0x56;
     const c = step(cpu);
     expect(c).toBe(19);
   });
@@ -157,4 +161,3 @@ describe('Z80 timing alignment (selected instructions)', (): void => {
     expect(c).toBe(11);
   });
 });
-

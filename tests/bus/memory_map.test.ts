@@ -4,7 +4,10 @@ import { SmsBus, type Cartridge } from '../../src/bus/bus.js';
 
 const cartFromBanks = (banks: number): Cartridge => {
   const rom = new Uint8Array(banks * 0x4000);
-  for (let i = 0; i < banks; i++) rom[i * 0x4000] = i; // sentinel at first byte of each bank
+  for (let i = 0; i < banks; i++) {
+    rom[i * 0x4000] = i; // sentinel at first byte of each bank
+    rom[i * 0x4000 + 0x0400] = i; // sentinel at 0x0400 offset too for bank0 switching test
+  }
   return { rom };
 };
 
@@ -34,9 +37,9 @@ describe('SMS Bus memory map and SegaMapper', (): void => {
     // Switch bank1 to 6
     bus.write8(0xfffd, 6);
     expect(bus.read8(0x4000)).toBe(6);
-    // Switch bank0 to 7
+    // Switch bank0 to 7 (note: first 1KB at 0x0000-0x03FF is always from ROM bank 0)
     bus.write8(0xfffc, 7);
-    expect(bus.read8(0x0000)).toBe(7);
+    expect(bus.read8(0x0400)).toBe(7); // Check at 0x0400 where bank switching takes effect
   });
 
   it('VDP port mirrors on IO space (0xBE/0xBF)', (): void => {

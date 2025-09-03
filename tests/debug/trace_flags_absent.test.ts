@@ -18,4 +18,3 @@ describe('Trace formatter branches (flags without regs)', (): void => {
     expect(s.includes(' F=')).toBe(false);
   });
 });
-

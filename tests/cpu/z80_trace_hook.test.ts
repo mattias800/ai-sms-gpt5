@@ -10,7 +10,12 @@ describe('Z80 onTrace hook', (): void => {
     const mem = bus.getMemory();
     mem[0x0000] = 0x00; // NOP
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); } });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+    });
 
     const cycles = step(cpu);
     expect(cycles).toBe(4);
@@ -29,7 +34,12 @@ describe('Z80 onTrace hook', (): void => {
     // Program: EI; HALT
     mem.set([0xfb, 0x76], 0x0000);
     const events: TraceEvent[] = [];
-    const cpu = createZ80({ bus, onTrace: (ev): void => { events.push(ev); } });
+    const cpu = createZ80({
+      bus,
+      onTrace: (ev): void => {
+        events.push(ev);
+      },
+    });
 
     // Execute EI and HALT
     expect(step(cpu)).toBe(4);
@@ -48,4 +58,3 @@ describe('Z80 onTrace hook', (): void => {
     expect(irqEv.cycles).toBe(13);
   });
 });
-

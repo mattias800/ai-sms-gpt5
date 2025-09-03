@@ -24,7 +24,7 @@ describe('Z80 CB-prefixed (rotates/shifts, BIT, RES, SET)', (): void => {
         0x06, // RLC (HL) -> 0x01, C=1 (given mem[0x4010]=0x80)
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     // Preload memory at HL target
     mem[0x4010] = 0x80;
@@ -71,7 +71,7 @@ describe('Z80 CB-prefixed (rotates/shifts, BIT, RES, SET)', (): void => {
         0x56, // BIT 2,(HL) 0x40 + (2<<3) + 6
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
 
@@ -123,7 +123,7 @@ describe('Z80 CB-prefixed (rotates/shifts, BIT, RES, SET)', (): void => {
         0xfe, // SET 7,(HL) (0xC0 + (7<<3) + 6) => 0xFE
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     step(cpu); // LD A

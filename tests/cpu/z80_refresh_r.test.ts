@@ -66,4 +66,3 @@ describe('Z80 R refresh register semantics', (): void => {
     expect(st.r & 0x7f).toBe(0x03);
   });
 });
-

@@ -13,4 +13,3 @@ describe('SMS wait state hooks branch coverage', (): void => {
     expect(hooks.ioPenalty!(0x01, false)).toBe(0);
   });
 });
-

@@ -12,8 +12,10 @@ describe('Z80 ED IN r,(C) and OUT (C),r', (): void => {
     // LD C,0x7f; IN B,(C)
     mem.set([0x0e, 0x7f, 0xed, 0x40], 0x0000);
     const cpu = createZ80({ bus });
-    let c = step(cpu); expect(c).toBe(7); // LD C
-    c = step(cpu); expect(c).toBe(12); // IN B,(C)
+    let c = step(cpu);
+    expect(c).toBe(7); // LD C
+    c = step(cpu);
+    expect(c).toBe(12); // IN B,(C)
     const st = cpu.getState();
     expect(st.b).toBe(0xff);
     // Flags: S=1, Z=0, PV=1 for 0xFF
@@ -31,7 +33,8 @@ describe('Z80 ED IN r,(C) and OUT (C),r', (): void => {
     step(cpu); // LD C
     step(cpu); // LD A
     const f0 = cpu.getState().f;
-    const c = step(cpu); expect(c).toBe(12); // OUT (C),A
+    const c = step(cpu);
+    expect(c).toBe(12); // OUT (C),A
     const f1 = cpu.getState().f;
     expect(f1).toBe(f0);
   });
@@ -66,4 +69,3 @@ describe('Z80 ED IN r,(C) and OUT (C),r', (): void => {
     expect(c).toBe(12);
   });
 });
-

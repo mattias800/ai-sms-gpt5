@@ -41,4 +41,3 @@ describe('Misc branch coverage: EX DE,HL and JP (IX/IY)', (): void => {
     expect(cpu.getState().pc).toBe(0x2222);
   });
 });
-

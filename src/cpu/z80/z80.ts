@@ -40,13 +40,20 @@ export interface WaitStateHooks {
 }
 
 export interface RegsSnapshot {
-  a: number; f: number;
-  b: number; c: number;
-  d: number; e: number;
-  h: number; l: number;
-  ix: number; iy: number;
-  sp: number; pc: number;
-  i: number; r: number;
+  a: number;
+  f: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  h: number;
+  l: number;
+  ix: number;
+  iy: number;
+  sp: number;
+  pc: number;
+  i: number;
+  r: number;
 }
 
 export interface TraceEvent {
@@ -333,7 +340,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // Helper to return cycles with optional wait-state inclusion
     const mkRes = (baseCycles: number, irqA: boolean, nmiA: boolean): StepResult => {
-      const extra = wsEnabled() && ws?.includeWaitInCycles ? (curWaitCycles | 0) : 0;
+      const extra = wsEnabled() && ws?.includeWaitInCycles ? curWaitCycles | 0 : 0;
       const res: StepResult = { cycles: baseCycles + extra, irqAccepted: irqA, nmiAccepted: nmiA };
       if (tracer) {
         let text: string | undefined;
@@ -346,16 +353,32 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         }
         const regs = opts.traceRegs
           ? {
-              a: s.a & 0xff, f: s.f & 0xff,
-              b: s.b & 0xff, c: s.c & 0xff,
-              d: s.d & 0xff, e: s.e & 0xff,
-              h: s.h & 0xff, l: s.l & 0xff,
-              ix: s.ix & 0xffff, iy: s.iy & 0xffff,
-              sp: s.sp & 0xffff, pc: s.pc & 0xffff,
-              i: s.i & 0xff, r: s.r & 0xff,
+              a: s.a & 0xff,
+              f: s.f & 0xff,
+              b: s.b & 0xff,
+              c: s.c & 0xff,
+              d: s.d & 0xff,
+              e: s.e & 0xff,
+              h: s.h & 0xff,
+              l: s.l & 0xff,
+              ix: s.ix & 0xffff,
+              iy: s.iy & 0xffff,
+              sp: s.sp & 0xffff,
+              pc: s.pc & 0xffff,
+              i: s.i & 0xff,
+              r: s.r & 0xff,
             }
           : undefined;
-        tracer({ pcBefore: pc0, opcode: currOp, cycles: res.cycles, irqAccepted: irqA, nmiAccepted: nmiA, text, bytes, regs });
+        tracer({
+          pcBefore: pc0,
+          opcode: currOp,
+          cycles: res.cycles,
+          irqAccepted: irqA,
+          nmiAccepted: nmiA,
+          text,
+          bytes,
+          regs,
+        });
       }
       return res;
     };
@@ -409,7 +432,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
               0xff: 0x38,
             };
             if (opb in rstTargets) {
-              s.pc = rstTargets[opb]!
+              s.pc = rstTargets[opb]!;
               return mkRes(13, true, false);
             }
             throw new Error(`IM0 unsupported opcode 0x${opb.toString(16).padStart(2, '0')}`);
@@ -468,7 +491,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
             0xff: 0x38,
           };
           if (opb in rstTargets) {
-            s.pc = rstTargets[opb]!
+            s.pc = rstTargets[opb]!;
             return mkRes(13, true, false);
           }
           throw new Error(`IM0 unsupported opcode 0x${opb.toString(16).padStart(2, '0')}`);
@@ -699,14 +722,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       // ADC HL,ss (ED 4A/5A/6A/7A)
       if ((sub & 0xcf) === 0x4a) {
         const sel = (sub >>> 4) & 0x03; // 0:BC,1:DE,2:HL,3:SP
-        const ss =
-          sel === 0
-            ? (s.b << 8) | s.c
-            : sel === 1
-              ? (s.d << 8) | s.e
-              : sel === 2
-                ? (s.h << 8) | s.l
-                : s.sp;
+        const ss = sel === 0 ? (s.b << 8) | s.c : sel === 1 ? (s.d << 8) | s.e : sel === 2 ? (s.h << 8) | s.l : s.sp;
         const a = (s.h << 8) | s.l;
         const carry = (s.f & FLAG_C) !== 0 ? 1 : 0;
         const sum = a + ss + carry;
@@ -731,14 +747,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       // SBC HL,ss (ED 42/52/62/72)
       if ((sub & 0xcf) === 0x42) {
         const sel = (sub >>> 4) & 0x03;
-        const ss =
-          sel === 0
-            ? (s.b << 8) | s.c
-            : sel === 1
-              ? (s.d << 8) | s.e
-              : sel === 2
-                ? (s.h << 8) | s.l
-                : s.sp;
+        const ss = sel === 0 ? (s.b << 8) | s.c : sel === 1 ? (s.d << 8) | s.e : sel === 2 ? (s.h << 8) | s.l : s.sp;
         const a = (s.h << 8) | s.l;
         const carry = (s.f & FLAG_C) !== 0 ? 1 : 0;
         const diff = a - ss - carry;
@@ -763,14 +772,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         const lo = fetch8();
         const hi = fetch8();
         const nn = ((hi << 8) | lo) & 0xffff;
-        const val =
-          sel === 0
-            ? (s.b << 8) | s.c
-            : sel === 1
-              ? (s.d << 8) | s.e
-              : sel === 2
-                ? (s.h << 8) | s.l
-                : s.sp;
+        const val = sel === 0 ? (s.b << 8) | s.c : sel === 1 ? (s.d << 8) | s.e : sel === 2 ? (s.h << 8) | s.l : s.sp;
         write16(nn, val);
         return mkRes(20, false, false);
       }
@@ -876,15 +878,22 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
             // Degenerate: behave like final iteration
             const val0 = read8(hl);
             write8(de, val0);
-            if (sub === 0xb0) { // LDIR increment
-              hl = (hl + 1) & 0xffff; de = (de + 1) & 0xffff;
-            } else { // LDDR decrement
-              hl = (hl - 1) & 0xffff; de = (de - 1) & 0xffff;
+            if (sub === 0xb0) {
+              // LDIR increment
+              hl = (hl + 1) & 0xffff;
+              de = (de + 1) & 0xffff;
+            } else {
+              // LDDR decrement
+              hl = (hl - 1) & 0xffff;
+              de = (de - 1) & 0xffff;
             }
             bc = (bc - 1) & 0xffff;
-            s.h = (hl >>> 8) & 0xff; s.l = hl & 0xff;
-            s.d = (de >>> 8) & 0xff; s.e = de & 0xff;
-            s.b = (bc >>> 8) & 0xff; s.c = bc & 0xff;
+            s.h = (hl >>> 8) & 0xff;
+            s.l = hl & 0xff;
+            s.d = (de >>> 8) & 0xff;
+            s.e = de & 0xff;
+            s.b = (bc >>> 8) & 0xff;
+            s.c = bc & 0xff;
             let f0 = s.f & (FLAG_S | FLAG_Z | FLAG_C);
             const sum0 = (s.a + val0) & 0xff;
             if (sum0 & 0x08) f0 |= FLAG_3;
@@ -899,16 +908,23 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
             const v = read8(hl);
             write8(de, v);
             lastVal = v;
-            if (sub === 0xb0) { // LDIR increment
-              hl = (hl + 1) & 0xffff; de = (de + 1) & 0xffff;
-            } else { // LDDR decrement
-              hl = (hl - 1) & 0xffff; de = (de - 1) & 0xffff;
+            if (sub === 0xb0) {
+              // LDIR increment
+              hl = (hl + 1) & 0xffff;
+              de = (de + 1) & 0xffff;
+            } else {
+              // LDDR decrement
+              hl = (hl - 1) & 0xffff;
+              de = (de - 1) & 0xffff;
             }
           }
           // Update regs after all iterations
-          s.h = (hl >>> 8) & 0xff; s.l = hl & 0xff;
-          s.d = (de >>> 8) & 0xff; s.e = de & 0xff;
-          s.b = 0; s.c = 0;
+          s.h = (hl >>> 8) & 0xff;
+          s.l = hl & 0xff;
+          s.d = (de >>> 8) & 0xff;
+          s.e = de & 0xff;
+          s.b = 0;
+          s.c = 0;
           // Flags at end: H=0,N=0, C/S/Z preserved, PV=0, F3/F5 from (A+lastVal)
           let f = s.f & (FLAG_S | FLAG_Z | FLAG_C);
           const sum = (s.a + lastVal) & 0xff;
@@ -916,7 +932,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
           if (sum & 0x20) f |= FLAG_5;
           s.f = f;
           // Cycles: (count-1)*21 + 16
-          const totalCycles = (count > 0 ? ((count - 1) * 21 + 16) : 16);
+          const totalCycles = count > 0 ? (count - 1) * 21 + 16 : 16;
           // Advance PC past instruction (do not repeat)
           s.pc = (s.pc + 2) & 0xffff;
           return mkRes(totalCycles, false, false);
@@ -1015,7 +1031,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         sub === 0xa3 || // OUTI
         sub === 0xab || // OUTD
         sub === 0xb3 || // OTIR
-        sub === 0xbb    // OTDR
+        sub === 0xbb // OTDR
       ) {
         const isIn = sub === 0xa2 || sub === 0xaa || sub === 0xb2 || sub === 0xba;
         const isRepeat = sub === 0xb2 || sub === 0xba || sub === 0xb3 || sub === 0xbb;
@@ -1034,7 +1050,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         }
 
         // Update HL (+/- 1)
-        const hl2 = isDec ? ((hl - 1) & 0xffff) : ((hl + 1) & 0xffff);
+        const hl2 = isDec ? (hl - 1) & 0xffff : (hl + 1) & 0xffff;
         s.h = (hl2 >>> 8) & 0xff;
         s.l = hl2 & 0xff;
 
@@ -1043,7 +1059,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         s.b = b2;
 
         // Compute helper t used for H/C and F3/F5 (common emulator formula)
-        const cAdj = isDec ? ((cVal - 1) & 0xff) : ((cVal + 1) & 0xff);
+        const cAdj = isDec ? (cVal - 1) & 0xff : (cVal + 1) & 0xff;
         const sum = ioVal + cAdj;
         const t = sum & 0xff;
         const carry = sum > 0xff;
@@ -1109,7 +1125,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       throw new Error(
         `Unimplemented ED opcode 0x${sub.toString(16).padStart(2, '0')} at PC=0x${(s.pc - 2)
           .toString(16)
-          .padStart(4, '0')}`,
+          .padStart(4, '0')}`
       );
     }
 
@@ -1125,57 +1141,85 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       const setXYH = (v: number): void => {
         const base = isIX ? s.ix : s.iy;
         const nv = ((v & 0xff) << 8) | (base & 0xff);
-        if (isIX) s.ix = nv & 0xffff; else s.iy = nv & 0xffff;
+        if (isIX) s.ix = nv & 0xffff;
+        else s.iy = nv & 0xffff;
       };
       const setXYL = (v: number): void => {
         const base = isIX ? s.ix : s.iy;
         const nv = ((base & 0xff00) | (v & 0xff)) & 0xffff;
-        if (isIX) s.ix = nv; else s.iy = nv;
+        if (isIX) s.ix = nv;
+        else s.iy = nv;
       };
       const ddRegGet = (code: number): number => {
         switch (code & 7) {
-          case 0: return s.b & 0xff;
-          case 1: return s.c & 0xff;
-          case 2: return s.d & 0xff;
-          case 3: return s.e & 0xff;
-          case 4: return xyh();
-          case 5: return xyl();
-          case 7: return s.a & 0xff;
-          default: /* 6 handled elsewhere */ return 0;
+          case 0:
+            return s.b & 0xff;
+          case 1:
+            return s.c & 0xff;
+          case 2:
+            return s.d & 0xff;
+          case 3:
+            return s.e & 0xff;
+          case 4:
+            return xyh();
+          case 5:
+            return xyl();
+          case 7:
+            return s.a & 0xff;
+          default:
+            /* 6 handled elsewhere */ return 0;
         }
       };
       const ddRegSet = (code: number, val: number): void => {
         const v = val & 0xff;
         switch (code & 7) {
-          case 0: s.b = v; break;
-          case 1: s.c = v; break;
-          case 2: s.d = v; break;
-          case 3: s.e = v; break;
-          case 4: setXYH(v); break;
-          case 5: setXYL(v); break;
-          case 7: s.a = v; break;
+          case 0:
+            s.b = v;
+            break;
+          case 1:
+            s.c = v;
+            break;
+          case 2:
+            s.d = v;
+            break;
+          case 3:
+            s.e = v;
+            break;
+          case 4:
+            setXYH(v);
+            break;
+          case 5:
+            setXYL(v);
+            break;
+          case 7:
+            s.a = v;
+            break;
         }
       };
 
       // IX/IY 16-bit LD and arithmetic
-      if (op2 === 0x21) { // LD IX/IY,nn
+      if (op2 === 0x21) {
+        // LD IX/IY,nn
         const lo = fetch8();
         const hi = fetch8();
         if (isIX) s.ix = ((hi << 8) | lo) & 0xffff;
         else s.iy = ((hi << 8) | lo) & 0xffff;
         return mkRes(14, false, false);
       }
-      if (op2 === 0x23) { // INC IX/IY
+      if (op2 === 0x23) {
+        // INC IX/IY
         if (isIX) s.ix = (s.ix + 1) & 0xffff;
         else s.iy = (s.iy + 1) & 0xffff;
         return mkRes(10, false, false);
       }
-      if (op2 === 0x2b) { // DEC IX/IY
+      if (op2 === 0x2b) {
+        // DEC IX/IY
         if (isIX) s.ix = (s.ix - 1) & 0xffff;
         else s.iy = (s.iy - 1) & 0xffff;
         return mkRes(10, false, false);
       }
-      if (op2 === 0x22) { // LD (nn),IX/IY
+      if (op2 === 0x22) {
+        // LD (nn),IX/IY
         const lo = fetch8();
         const hi = fetch8();
         const nn = ((hi << 8) | lo) & 0xffff;
@@ -1183,19 +1227,30 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         write16(nn, val);
         return mkRes(20, false, false);
       }
-      if (op2 === 0x2a) { // LD IX/IY,(nn)
+      if (op2 === 0x2a) {
+        // LD IX/IY,(nn)
         const lo = fetch8();
         const hi = fetch8();
         const nn = ((hi << 8) | lo) & 0xffff;
         const val = read16(nn);
-        if (isIX) s.ix = val; else s.iy = val;
+        if (isIX) s.ix = val;
+        else s.iy = val;
         return mkRes(20, false, false);
       }
-      if ((op2 & 0xcf) === 0x09) { // ADD IX/IY,pp
+      if ((op2 & 0xcf) === 0x09) {
+        // ADD IX/IY,pp
         const pp = (op2 >>> 4) & 3;
         const a = isIX ? s.ix : s.iy;
         const ppVal =
-          pp === 0 ? ((s.b << 8) | s.c) & 0xffff : pp === 1 ? ((s.d << 8) | s.e) & 0xffff : pp === 2 ? (isIX ? s.ix : s.iy) : s.sp;
+          pp === 0
+            ? ((s.b << 8) | s.c) & 0xffff
+            : pp === 1
+              ? ((s.d << 8) | s.e) & 0xffff
+              : pp === 2
+                ? isIX
+                  ? s.ix
+                  : s.iy
+                : s.sp;
         const sum = a + ppVal;
         const r16 = sum & 0xffff;
         let f = s.f & (FLAG_S | FLAG_Z | FLAG_PV);
@@ -1210,23 +1265,28 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         return mkRes(15, false, false);
       }
 
-      if (op2 === 0xf9) { // LD SP,IX/IY
+      if (op2 === 0xf9) {
+        // LD SP,IX/IY
         s.sp = (isIX ? s.ix : s.iy) & 0xffff;
         return mkRes(10, false, false);
       }
 
-      if (op2 === 0xe5) { // PUSH IX/IY
+      if (op2 === 0xe5) {
+        // PUSH IX/IY
         push16(indexVal());
         return mkRes(15, false, false);
       }
 
-      if (op2 === 0xe1) { // POP IX/IY
+      if (op2 === 0xe1) {
+        // POP IX/IY
         const val = pop16();
-        if (isIX) s.ix = val; else s.iy = val;
+        if (isIX) s.ix = val;
+        else s.iy = val;
         return mkRes(14, false, false);
       }
 
-      if (op2 === 0xe3) { // EX (SP),IX/IY
+      if (op2 === 0xe3) {
+        // EX (SP),IX/IY
         const lo = read8(s.sp);
         const hi = read8((s.sp + 1) & 0xffff);
         const idx = isIX ? s.ix : s.iy;
@@ -1331,7 +1391,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         throw new Error(
           `Unimplemented ${isIX ? 'DD' : 'FD'} CB opcode 0x${sub
             .toString(16)
-            .padStart(2, '0')} at PC=0x${(s.pc - 4).toString(16).padStart(4, '0')}`,
+            .padStart(2, '0')} at PC=0x${(s.pc - 4).toString(16).padStart(4, '0')}`
         );
       }
 
@@ -1420,13 +1480,13 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
             else regSet(rDst, v);
             return mkRes(19, false, false);
           } else {
-            const v = (rSrc === 4 || rSrc === 5) ? ddRegGet(rSrc) : regGet(rSrc);
+            const v = rSrc === 4 || rSrc === 5 ? ddRegGet(rSrc) : regGet(rSrc);
             write8(addr, v);
             return mkRes(19, false, false);
           }
         }
         // Pure register transfer including IXH/IXL or IYH/IYL
-        const v = (rSrc === 4 || rSrc === 5) ? ddRegGet(rSrc) : regGet(rSrc);
+        const v = rSrc === 4 || rSrc === 5 ? ddRegGet(rSrc) : regGet(rSrc);
         if (rDst === 4 || rDst === 5) ddRegSet(rDst, v);
         else regSet(rDst, v);
         return mkRes(4, false, false);
@@ -1483,7 +1543,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
           }
           return mkRes(19, false, false);
         } else {
-          const b = (arithSrc === 4 || arithSrc === 5) ? ddRegGet(arithSrc) : regGet(arithSrc);
+          const b = arithSrc === 4 || arithSrc === 5 ? ddRegGet(arithSrc) : regGet(arithSrc);
           if ((op2 & 0xf8) === 0x80) {
             const { r, f } = add8(s.a, b, 0);
             s.a = r;
@@ -1526,7 +1586,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       throw new Error(
         `Unimplemented ${isIX ? 'DD' : 'FD'} opcode 0x${op2
           .toString(16)
-          .padStart(2, '0')} at PC=0x${(s.pc - 2).toString(16).padStart(4, '0')}`,
+          .padStart(2, '0')} at PC=0x${(s.pc - 2).toString(16).padStart(4, '0')}`
       );
     }
 
@@ -1628,7 +1688,13 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       const ss = (op >>> 4) & 3;
       const hl = ((s.h << 8) | s.l) & 0xffff;
       const ssVal =
-        ss === 0 ? ((s.b << 8) | s.c) & 0xffff : ss === 1 ? ((s.d << 8) | s.e) & 0xffff : ss === 2 ? ((s.h << 8) | s.l) & 0xffff : s.sp;
+        ss === 0
+          ? ((s.b << 8) | s.c) & 0xffff
+          : ss === 1
+            ? ((s.d << 8) | s.e) & 0xffff
+            : ss === 2
+              ? ((s.h << 8) | s.l) & 0xffff
+              : s.sp;
       const sum = hl + ssVal;
       const r16 = sum & 0xffff;
       // Flags: N=0; H from bit 11; C from carry; preserve S/Z/PV; set F3/F5 from hi byte
@@ -1854,7 +1920,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // CPL (00101111)
     if (op === 0x2f) {
-      s.a = (~s.a) & 0xff;
+      s.a = ~s.a & 0xff;
       let f = s.f & (FLAG_S | FLAG_Z | FLAG_PV | FLAG_C);
       f |= FLAG_H | FLAG_N;
       if (s.a & 0x20) f |= FLAG_5;
@@ -2151,9 +2217,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // Unimplemented opcode
     throw new Error(
-      `Unimplemented opcode 0x${op.toString(16).padStart(2, '0')} at PC=0x${(s.pc - 1)
-        .toString(16)
-        .padStart(4, '0')}`,
+      `Unimplemented opcode 0x${op.toString(16).padStart(2, '0')} at PC=0x${(s.pc - 1).toString(16).padStart(4, '0')}`
     );
   };
 

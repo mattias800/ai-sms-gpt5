@@ -5,9 +5,20 @@ import type { TraceEvent, RegsSnapshot } from '../../src/cpu/z80/z80.js';
 describe('Trace formatter flags rendering', (): void => {
   it('renders all flags bits set (SZ5H3PNC)', (): void => {
     const regs: RegsSnapshot = {
-      a: 0, f: 0xff,
-      b: 0, c: 0, d: 0, e: 0, h: 0, l: 0,
-      ix: 0, iy: 0, sp: 0, pc: 0, i: 0, r: 0,
+      a: 0,
+      f: 0xff,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: 0,
+      h: 0,
+      l: 0,
+      ix: 0,
+      iy: 0,
+      sp: 0,
+      pc: 0,
+      i: 0,
+      r: 0,
     };
     const ev: TraceEvent = {
       pcBefore: 0x0000,
@@ -23,4 +34,3 @@ describe('Trace formatter flags rendering', (): void => {
     expect(s).toMatch(/F=SZ5H3PNC/);
   });
 });
-

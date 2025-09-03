@@ -55,4 +55,3 @@ describe('Debug trace formatter', (): void => {
     expect(last).toMatch(/cyc=13/);
   });
 });
-

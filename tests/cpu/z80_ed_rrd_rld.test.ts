@@ -18,7 +18,8 @@ describe('Z80 ED RRD/RLD', (): void => {
     step(cpu); // LD HL
     step(cpu); // LD A
     step(cpu); // LD (HL)
-    const c = step(cpu); expect(c).toBe(18);
+    const c = step(cpu);
+    expect(c).toBe(18);
     const st = cpu.getState();
     // RRD: new (HL) = ((A low << 4) | (M >> 4)) = ((0xB<<4)|(0xCD>>4)=0xB0|0x0C=0xBC)
     //       new A = (A high | (M low)) = 0xA0 | 0x0D = 0xAD
@@ -41,7 +42,8 @@ describe('Z80 ED RRD/RLD', (): void => {
     step(cpu); // LD HL
     step(cpu); // LD A
     step(cpu); // LD (HL)
-    const c = step(cpu); expect(c).toBe(18);
+    const c = step(cpu);
+    expect(c).toBe(18);
     const st = cpu.getState();
     // RLD: new (HL) = ((M << 4) | (A low)) = (0x34<<4 | 0x2) = 0x40 | 0x02 = 0x42
     //      new A = (A high | (M >> 4)) = 0x10 | 0x03 = 0x13
@@ -53,4 +55,3 @@ describe('Z80 ED RRD/RLD', (): void => {
     expect((st.f & FLAG_PV) !== 0).toBe(false);
   });
 });
-

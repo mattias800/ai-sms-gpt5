@@ -12,13 +12,14 @@ describe('Z80 INC dd variants to cover branches', (): void => {
     mem.set([0x11, 0xff, 0xff, 0x13, 0x31, 0x00, 0x00, 0x33], 0x0000);
     const cpu = createZ80({ bus });
     step(cpu); // LD DE
-    let c = step(cpu); expect(c).toBe(6);
+    let c = step(cpu);
+    expect(c).toBe(6);
     let st = cpu.getState();
     expect(((st.d << 8) | st.e) & 0xffff).toBe(0x0000);
     step(cpu); // LD SP
-    c = step(cpu); expect(c).toBe(6);
+    c = step(cpu);
+    expect(c).toBe(6);
     st = cpu.getState();
     expect(st.sp).toBe(0x0001);
   });
 });
-

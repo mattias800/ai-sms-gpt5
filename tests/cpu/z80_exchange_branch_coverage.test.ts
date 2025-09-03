@@ -5,7 +5,7 @@ import { createZ80 } from '../../src/cpu/z80/z80.js';
 const step = (cpu: ReturnType<typeof createZ80>): number => cpu.stepOne().cycles;
 
 describe('Exchange and 16-bit LD branch coverage', (): void => {
-  it('EX AF,AF\' twice restores original AF', (): void => {
+  it("EX AF,AF' twice restores original AF", (): void => {
     const bus = new SimpleBus();
     const mem = bus.getMemory();
     // EX AF,AF'; EX AF,AF'
@@ -33,4 +33,3 @@ describe('Exchange and 16-bit LD branch coverage', (): void => {
     expect(((s.d << 8) | s.e) & 0xffff).toBe(0x1234);
   });
 });
-

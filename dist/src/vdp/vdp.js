@@ -59,14 +59,7 @@ export const createVDP = (timing) => {
             if (code === 0x02) {
                 // Register write: index in low 4 bits, value is low byte
                 const reg = high & 0x0f;
-                // Fix for games that set invalid mode bits: when M4 is set, ignore M3
-                if (reg === 0 && (low & 0x04)) {
-                    // Mode 4 is set, clear M3 bit to ensure valid mode
-                    s.regs[reg] = low & ~0x02;
-                }
-                else {
-                    s.regs[reg] = low;
-                }
+                s.regs[reg] = low;
                 if (reg === 1) {
                     // VBlank IRQ enable is bit 5 of reg1. If enabling during active VBlank, assert immediately.
                     const irqEnabled = (low & 0x20) !== 0;

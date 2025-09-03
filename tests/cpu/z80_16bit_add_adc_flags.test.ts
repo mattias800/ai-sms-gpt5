@@ -55,4 +55,3 @@ describe('Z80 16-bit ADD/ADC HL flags (H and C paths)', (): void => {
     expect((st.f & FLAG_C) !== 0).toBe(false);
   });
 });
-

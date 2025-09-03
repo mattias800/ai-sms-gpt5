@@ -12,4 +12,3 @@ describe('VDP mirror reads via even ports map to 0xBE (data)', (): void => {
     expect(val >= 0 && val <= 0xff).toBe(true);
   });
 });
-

@@ -16,7 +16,7 @@ const setRegs = (
     h: number;
     l: number;
     f: number;
-  }>,
+  }>
 ): void => {
   const s = cpu.getState();
   cpu.setState({ ...s, ...regs });

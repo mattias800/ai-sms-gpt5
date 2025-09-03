@@ -20,4 +20,3 @@ describe('VDP CRAM writes', (): void => {
     expect(st?.cram[1]).toBe(0x3f);
   });
 });
-

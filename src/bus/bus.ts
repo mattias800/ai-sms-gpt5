@@ -40,13 +40,13 @@ export class SegaMapper implements IMapper {
 
   public mapRead = (addr: number): number => {
     const a = addr & 0xffff;
-    
+
     // When RAM is mapped to slot 0, mirror system RAM
     if (this.ramInSlot0 && a < 0x2000 && this.wramRef) {
       // RAM at 0xC000-0xDFFF mirrors to 0x0000-0x1FFF
       return this.wramRef[a]!;
     }
-    
+
     // First 1KB is always from bank 0 (unless RAM is mapped)
     if (a < 0x0400 && !this.ramInSlot0) {
       return this.banks[0]![a]!;
@@ -77,12 +77,12 @@ export class SegaMapper implements IMapper {
       // SRAM control (ignored in this stub)
     }
   };
-  
+
   // Set WRAM reference for RAM mirroring
   public setWramRef = (wram: Uint8Array): void => {
     this.wramRef = wram;
   };
-  
+
   // Handle writes when RAM is mapped to slot 0
   public mapWrite = (addr: number, val: number): boolean => {
     const a = addr & 0xffff;
@@ -200,10 +200,12 @@ export class SmsBus implements IBus {
       // TH lines (bit 6) are driven from 0x3F upper bits; treat them as outputs for handshake
       if (p === 0xdc) {
         // Port A TH on bit 6
-        if (this.thALatch) val |= 0x40; else val &= ~0x40;
+        if (this.thALatch) val |= 0x40;
+        else val &= ~0x40;
       } else {
         // Port B TH on bit 6
-        if (this.thBLatch) val |= 0x40; else val &= ~0x40;
+        if (this.thBLatch) val |= 0x40;
+        else val &= ~0x40;
       }
       return val & 0xff;
     }
@@ -233,8 +235,8 @@ export class SmsBus implements IBus {
       // Lower 6 bits: direction mask for controller lines (1=output)
       this.ioDirMask = v & 0x3f;
       // Upper bits drive TH line latches: bit6 -> TH-A, bit7 -> TH-B
-      this.thALatch = (v & 0x40) ? 1 : 0;
-      this.thBLatch = (v & 0x80) ? 1 : 0;
+      this.thALatch = v & 0x40 ? 1 : 0;
+      this.thBLatch = v & 0x80 ? 1 : 0;
       // Keep generic lower-line outputs default pulled high unless explicitly modeled elsewhere
       this.ioOutLatch |= 0x3f;
       return;
@@ -242,7 +244,7 @@ export class SmsBus implements IBus {
     if (p === 0x3e) {
       this.memControl = v;
       // Enable optional cartridge RAM mapping at 0x8000-0xBFFF when bit3 is set and bus allows it.
-      this.cartRamEnabled = this.allowCartRam && ((v & 0x08) !== 0);
+      this.cartRamEnabled = this.allowCartRam && (v & 0x08) !== 0;
       return;
     }
     // VDP mirrors across IO space: any port with low 6 bits 0x3e/0x3f maps to 0xbe/0xbf
@@ -266,7 +268,7 @@ export class SmsBus implements IBus {
   public getMemControl = (): number => this.memControl;
 
   // Debug helper: summarize HCounter reads histogram
-  public getHCounterStats = (): { total: number; vreads: number; top: Array<{ value: number; count: number }>; } => {
+  public getHCounterStats = (): { total: number; vreads: number; top: Array<{ value: number; count: number }> } => {
     const res: Array<{ value: number; count: number }> = [];
     for (let i = 0; i < 256; i++) {
       const c = this.hCounterHist[i];
@@ -276,7 +278,10 @@ export class SmsBus implements IBus {
     return { total: this.hCounterReads, vreads: this.vCounterReads, top: res.slice(0, 8) };
   };
 
-  public getVDPWriteStats = (): { data: number; control: number } => ({ data: this.vdpDataWrites, control: this.vdpCtrlWrites });
+  public getVDPWriteStats = (): { data: number; control: number } => ({
+    data: this.vdpDataWrites,
+    control: this.vdpCtrlWrites,
+  });
   // Test helper to configure conservative IO mask explicitly
   public __setIOMaskForTest = (dirMask: number, outLatch: number): void => {
     this.ioDirMask = dirMask & 0xff;

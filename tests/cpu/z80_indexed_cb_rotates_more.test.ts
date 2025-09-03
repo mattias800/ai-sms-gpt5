@@ -48,7 +48,7 @@ describe('DD CB d rotates/shifts coverage on (IX+d)', (): void => {
         0x3e, // SRL (IX+7)
         0x76,
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     setIX(cpu, 0x4000);

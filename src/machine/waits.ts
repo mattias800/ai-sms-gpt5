@@ -22,4 +22,3 @@ export const createSmsWaitHooks = (cfg?: SmsWaitModelConfig | null): WaitStateHo
     },
   };
 };
-

@@ -15,7 +15,7 @@ describe('VDP timing (HCounter/VCounter/VBlank)', (): void => {
     const cpl = gs0?.cyclesPerLine ?? 228;
     vdp.tickCycles((cpl - 2) | 0);
     const h1 = vdp.readPort(0x7e) & 0xff;
-    expect(h1).toBe(0xB0);
+    expect(h1).toBe(0xb0);
   });
 
   it('VCounter increases after a full line and VBlank sets status bit 7', (): void => {
@@ -45,4 +45,3 @@ describe('VDP timing (HCounter/VCounter/VBlank)', (): void => {
     expect((statusAfter & 0x80) !== 0).toBe(false);
   });
 });
-

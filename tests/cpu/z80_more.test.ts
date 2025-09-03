@@ -24,7 +24,7 @@ describe('Z80 additional coverage', (): void => {
         0x7c, // LD A,H
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     stepN(cpu, 6);
@@ -49,7 +49,7 @@ describe('Z80 additional coverage', (): void => {
         0x35, // DEC (HL)
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     // Ensure memory at 0x40ff initially 0x00
@@ -84,7 +84,7 @@ describe('Z80 additional coverage', (): void => {
         0x01, // SUB 0x01
         0x76, // HALT
       ],
-      0x0000,
+      0x0000
     );
     const cpu = createZ80({ bus });
     stepN(cpu, 2);

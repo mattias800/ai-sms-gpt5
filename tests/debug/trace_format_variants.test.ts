@@ -19,13 +19,20 @@ describe('Debug trace formatter branch variants', (): void => {
 
   it('handles provided bytes and regs with lowercase hex', (): void => {
     const regs: RegsSnapshot = {
-      a: 0x12, f: 0x00,
-      b: 0x34, c: 0x56,
-      d: 0x78, e: 0x9a,
-      h: 0xbc, l: 0xde,
-      ix: 0x2000, iy: 0x3000,
-      sp: 0xff00, pc: 0x4000,
-      i: 0xaa, r: 0x55,
+      a: 0x12,
+      f: 0x00,
+      b: 0x34,
+      c: 0x56,
+      d: 0x78,
+      e: 0x9a,
+      h: 0xbc,
+      l: 0xde,
+      ix: 0x2000,
+      iy: 0x3000,
+      sp: 0xff00,
+      pc: 0x4000,
+      i: 0xaa,
+      r: 0x55,
     };
     const ev: TraceEvent = {
       pcBefore: 0x1000,
@@ -54,4 +61,3 @@ describe('Debug trace formatter branch variants', (): void => {
     expect(s).toMatch(/ABCD: <INT>  cyc=11 NMI/);
   });
 });
-

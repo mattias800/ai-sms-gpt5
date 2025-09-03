@@ -46,4 +46,3 @@ describe('Z80 wait-state hooks fallback branches (memory write and IO read)', ()
     expect(cpu.getLastWaitCycles()).toBe(7);
   });
 });
-

@@ -30,4 +30,3 @@ describe('Z80 DJNZ relative branch', (): void => {
     expect(cpu2.getState().pc).toBe(0x0002);
   });
 });
-

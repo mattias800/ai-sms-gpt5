@@ -12,4 +12,3 @@ describe('SMS wait state hooks defaults', (): void => {
     expect(hooks.ioPenalty!(0x7f, false)).toBe(0);
   });
 });
-

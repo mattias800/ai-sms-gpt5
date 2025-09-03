@@ -19,12 +19,11 @@ describe('Cart RAM mapping via mem control (0x3E): enable/disable read/write', (
     expect(bus.read8(0x8000)).toBe(0x5a);
 
     // Another address within window
-    bus.write8(0xBFFF, 0xA5);
-    expect(bus.read8(0xBFFF)).toBe(0xA5);
+    bus.write8(0xbfff, 0xa5);
+    expect(bus.read8(0xbfff)).toBe(0xa5);
 
     // Disable cart RAM and ensure reads fall back to ROM mapping again (zero)
     bus.writeIO8(0x3e, 0x00);
     expect(bus.read8(0x8000)).toBe(0x00);
   });
 });
-

@@ -22,44 +22,40 @@ describe('DD/FD IXH/IXL arithmetic more coverage (register sources)', (): void =
     // 37          ; SCF (set carry)
     // DD 2E 01    ; IXL = 0x01
     // DD 9D       ; SBC A,L => SBC A,IXL => 0x20 - 1 - 1 = 0x1E
-    mem.set([
-      0xdd, 0x26, 0xf0,
-      0x3e, 0x0f,
-      0xdd, 0xa4,
-      0xdd, 0x26, 0x55,
-      0x3e, 0xaa,
-      0xdd, 0xac,
-      0xdd, 0x2e, 0xf0,
-      0x3e, 0x0f,
-      0xdd, 0xb5,
-      0x3e, 0x20,
-      0x37,
-      0xdd, 0x2e, 0x01,
-      0xdd, 0x9d,
-    ], 0x0000);
+    mem.set(
+      [
+        0xdd, 0x26, 0xf0, 0x3e, 0x0f, 0xdd, 0xa4, 0xdd, 0x26, 0x55, 0x3e, 0xaa, 0xdd, 0xac, 0xdd, 0x2e, 0xf0, 0x3e,
+        0x0f, 0xdd, 0xb5, 0x3e, 0x20, 0x37, 0xdd, 0x2e, 0x01, 0xdd, 0x9d,
+      ],
+      0x0000
+    );
     const cpu = createZ80({ bus });
 
-    let c = step(cpu); expect(c).toBe(7); // LD IXH via DD 26 nn (LD r,n under DD takes 7 cycles in our core)
+    let c = step(cpu);
+    expect(c).toBe(7); // LD IXH via DD 26 nn (LD r,n under DD takes 7 cycles in our core)
 
     step(cpu); // LD A,0x0F
-    c = step(cpu); expect(c).toBe(4); // AND IXH
+    c = step(cpu);
+    expect(c).toBe(4); // AND IXH
     expect(cpu.getState().a).toBe(0x00);
 
     step(cpu); // LD IXH,0x55
     step(cpu); // LD A,0xAA
-    c = step(cpu); expect(c).toBe(4); // XOR IXH
+    c = step(cpu);
+    expect(c).toBe(4); // XOR IXH
     expect(cpu.getState().a).toBe(0xff);
 
     step(cpu); // LD IXL,0xF0
     step(cpu); // LD A,0x0F
-    c = step(cpu); expect(c).toBe(4); // OR IXL
+    c = step(cpu);
+    expect(c).toBe(4); // OR IXL
     expect(cpu.getState().a).toBe(0xff);
 
     step(cpu); // LD A,0x20
     step(cpu); // SCF
     step(cpu); // LD IXL,0x01
-    c = step(cpu); expect(c).toBe(4); // SBC A,IXL
+    c = step(cpu);
+    expect(c).toBe(4); // SBC A,IXL
     expect(cpu.getState().a).toBe(0x1e);
   });
 });
-

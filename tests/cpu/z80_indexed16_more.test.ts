@@ -13,10 +13,12 @@ describe('Z80 IX/IY 16-bit basics: INC/DEC, ADD IX/IY,pp, LD SP,IX/IY, EX (SP),I
     // Seed IX and IY
     let st = cpu.getState();
     cpu.setState({ ...st, ix: 0x1000, iy: 0x2000 });
-    let c = step(cpu); expect(c).toBe(10); // INC IX
+    let c = step(cpu);
+    expect(c).toBe(10); // INC IX
     st = cpu.getState();
     expect(st.ix).toBe(0x1001);
-    c = step(cpu); expect(c).toBe(10); // DEC IY
+    c = step(cpu);
+    expect(c).toBe(10); // DEC IY
     st = cpu.getState();
     expect(st.iy).toBe(0x1fff);
   });
@@ -30,12 +32,14 @@ describe('Z80 IX/IY 16-bit basics: INC/DEC, ADD IX/IY,pp, LD SP,IX/IY, EX (SP),I
     // Seed IX and SP
     let st = cpu.getState();
     cpu.setState({ ...st, ix: 0x1234, sp: 0x0100, iy: 0x9000 });
-    let c = step(cpu); expect(c).toBe(15);
+    let c = step(cpu);
+    expect(c).toBe(15);
     st = cpu.getState();
     expect(st.ix).toBe(0x1334);
 
     // LD SP,IY
-    c = step(cpu); expect(c).toBe(10);
+    c = step(cpu);
+    expect(c).toBe(10);
     st = cpu.getState();
     expect(st.sp).toBe(0x9000);
 
@@ -44,11 +48,11 @@ describe('Z80 IX/IY 16-bit basics: INC/DEC, ADD IX/IY,pp, LD SP,IX/IY, EX (SP),I
     memArr[0x9000] = 0x78; // low
     memArr[0x9001] = 0x56; // high
     // EX (SP),IY swaps IY with (SP)
-    c = step(cpu); expect(c).toBe(23);
+    c = step(cpu);
+    expect(c).toBe(23);
     st = cpu.getState();
     expect(st.iy).toBe(0x5678);
     expect(memArr[0x9000]).toBe(0x00); // previous IY low
     expect(memArr[0x9001]).toBe(0x90); // previous IY high
   });
 });
-

@@ -29,4 +29,3 @@ describe('Z80 EI timing and IRQ acceptance', (): void => {
     expect(st.pc).toBe(0x0038);
   });
 });
-

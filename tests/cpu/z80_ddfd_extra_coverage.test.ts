@@ -54,4 +54,3 @@ describe('DD/FD extra branch coverage', (): void => {
     expect(cpu.getState().a).toBe(0x0f);
   });
 });
-
