@@ -141,10 +141,23 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       if (code === 0x02) {
         // Register write: index in low 4 bits, value is low byte
         const reg = high & 0x0f;
-        s.regs[reg] = low;
+        let value = low;
+        
+        // Handle register 0 special case: M3 and M4 mode bits conflict
+        if (reg === 0) {
+          // Check if both M3 (bit 1) and M4 (bit 2) are set
+          const m3 = (value & 0x02) !== 0;
+          const m4 = (value & 0x04) !== 0;
+          if (m3 && m4) {
+            // Mode 4 takes precedence - clear M3 bit
+            value = value & ~0x02;  // Clear bit 1 (M3)
+          }
+        }
+        
+        s.regs[reg] = value;
         if (reg === 1) {
           // VBlank IRQ enable is bit 5 of reg1. If enabling during active VBlank, assert immediately.
-          const irqEnabled = (low & 0x20) !== 0;
+          const irqEnabled = (value & 0x20) !== 0;
           if (!irqEnabled) {
             s.irqVLine = false;
           } else if ((s.status & 0x80) !== 0) {
@@ -152,7 +165,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           }
         } else if (reg === 15) {
           // Guard against 0 auto-increment to avoid infinite loops in stub
-          s.autoInc = low || 1;
+          s.autoInc = value || 1;
           s.regs[15] = s.autoInc;
         }
       } else {
