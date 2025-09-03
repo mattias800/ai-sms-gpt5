@@ -1,0 +1,21 @@
+{
+  "overrideUsed": true,
+  "overrideDisabled": false,
+  "pre": {
+    "display": false,
+    "cramWrites": 0,
+    "vramWrites": 78395904,
+    "nonZeroVRAM": 64,
+    "reg1": 162
+  },
+  "post": {
+    "display": true,
+    "cramWrites": 32,
+    "vramWrites": 78397472,
+    "nonZeroVRAM": 800,
+    "reg1": 226
+  },
+  "pngSource": "fallback",
+  "pngNonZeroRGB": 73728,
+  "lastPC": "0x2a9"
+}

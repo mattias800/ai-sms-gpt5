@@ -1,0 +1,95 @@
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { createMachine } from '../machine/machine.js';
+import type { Cartridge } from '../bus/bus.js';
+import { generatePNG } from '../../scripts/generate_png.js';
+
+const romFile = './Alex Kidd - The Lost Stars (UE) [!].sms';
+
+if (!existsSync(romFile)) {
+  console.error(`ROM file not found: ${romFile}`);
+  process.exit(1);
+}
+
+console.log('=== Testing Alex Kidd - The Lost Stars ===\n');
+
+const rom = new Uint8Array(readFileSync(romFile));
+console.log(`ROM size: ${rom.length} bytes (${rom.length / 1024}KB)`);
+
+// Check header
+console.log('\nROM Header at 0x7FF0:');
+const header = rom.subarray(0x7FF0, 0x8000);
+let headerStr = '';
+for (let i = 0; i < 16; i++) {
+  const c = header[i]!;
+  headerStr += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.';
+}
+console.log('Text:', headerStr);
+console.log('Hex:', Array.from(header.subarray(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+// Create machine
+const cart: Cartridge = { rom };
+const m = createMachine({ cart, fastBlocks: true });
+
+// Run for 60 frames
+console.log('\nRunning emulator for 60 frames...');
+const cyclesPerFrame = 59736; // NTSC
+
+for (let frame = 0; frame < 60; frame++) {
+  m.runCycles(cyclesPerFrame);
+  
+  if (frame % 20 === 0 || frame === 59) {
+    const cpu = m.getCPU();
+    const bus = m.getBus();
+    const vdp = m.getVDP();
+    const vdpState = vdp.getState ? vdp.getState() : undefined;
+    const cpuState = cpu.getState();
+    const stats = bus.getVDPWriteStats();
+    
+    console.log(`\n--- Frame ${frame + 1} ---`);
+    console.log(`PC: 0x${cpuState.pc.toString(16).padStart(4, '0')}`);
+    console.log(`SP: 0x${cpuState.sp.toString(16).padStart(4, '0')}`);
+    console.log(`Display: ${(vdpState?.regs[1] ?? 0) & 0x40 ? 'ON' : 'OFF'}`);
+    console.log(`VDP writes - Data: ${stats.data}, Control: ${stats.control}`);
+  }
+}
+
+// Generate screenshot
+console.log('\nGenerating screenshot...');
+const vdp = m.getVDP();
+const vram = vdp.getVRAM();
+const vdpState = vdp.getState ? vdp.getState() : undefined;
+
+const pngData = generatePNG({
+  vram,
+  cram: vdpState?.cram ?? new Uint8Array(32),
+  regs: vdpState?.regs ?? new Uint8Array(16),
+  mode: 'either',
+  sourceKey: 'alex_kidd',
+});
+
+writeFileSync('alex_kidd_frame.png', pngData.buffer);
+console.log(`Wrote alex_kidd_frame.png (${pngData.width}x${pngData.height})`);
+
+// Final diagnostic
+const cpu = m.getCPU();
+const bus = m.getBus();
+const cpuState = cpu.getState();
+const stats = bus.getVDPWriteStats();
+
+console.log('\n=== Final State ===');
+console.log(`PC: 0x${cpuState.pc.toString(16).padStart(4, '0')}`);
+console.log(`Display enabled: ${((vdpState?.regs[1] ?? 0) & 0x40) !== 0}`);
+console.log(`VBlank IRQ enabled: ${((vdpState?.regs[1] ?? 0) & 0x20) !== 0}`);
+console.log(`Total VDP writes - Data: ${stats.data}, Control: ${stats.control}`);
+console.log(`VRAM non-zero bytes: ${Array.from(vram).filter(b => b !== 0).length}`);
+
+// Check game status
+if (((vdpState?.regs[1] ?? 0) & 0x40) !== 0 && stats.data > 1000) {
+  console.log('\n✅ Game appears to be running! Display is on and VRAM has been written.');
+} else if (cpuState.pc === 0x38 || cpuState.pc === 0x66) {
+  console.log('\n⚠️ CPU at interrupt handler. Game might be stuck.');
+} else if (cpuState.pc < 0x100) {
+  console.log('\n⚠️ Game might be stuck in early initialization.');
+} else {
+  console.log('\n⚠️ Game status unclear. Check the PNG for visual output.');
+}

@@ -1,0 +1,30 @@
+{
+  "name": "ai-sms-gpt5",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "test": "vitest run --reporter=dot --coverage",
+    "test:watch": "vitest",
+    "ci": "npm run lint && npm run typecheck && npm run build && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.11",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "eslint-plugin-prettier": "^5.5.4",
+    "fast-check": "^4.2.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.9"
+  }
+}
