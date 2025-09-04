@@ -17,7 +17,9 @@ interface ProbeOptions {
 
 const parseArgs = (argv: string[]): { romPath: string; opts: ProbeOptions } => {
   if (argv.length < 1) {
-    console.error('Usage: node dist/scripts/probe_rom.js <rom.sms> [--steps N] [--trace N] [--reglog N] [--override-7e VAL] [--override-fe VAL]');
+    console.error(
+      'Usage: node dist/scripts/probe_rom.js <rom.sms> [--steps N] [--trace N] [--reglog N] [--override-7e VAL] [--override-fe VAL]'
+    );
     process.exit(1);
   }
   const romPath = argv[0]!;
@@ -52,7 +54,7 @@ const findTagPositions = (rom: Uint8Array, tag: string): number[] => {
   const out: number[] = [];
   outer: for (let i = 0; i + bytes.length <= rom.length; i++) {
     for (let j = 0; j < bytes.length; j++) {
-      if (rom[i + j] !== bytes[j]) continue outer;
+      if ((rom[i + j] ?? 0) !== bytes[j]) continue outer;
     }
     out.push(i);
   }
@@ -72,7 +74,9 @@ const main = (): void => {
 
   console.log(`ROM: ${basename(romPath)} — ${rom.length} bytes (${sizeKB} KB), banks=${banks}`);
   if (tagPos.length > 0) {
-    console.log(`Found 'TMR SEGA' signature at offsets: ${tagPos.map((p): string => '0x' + p.toString(16)).join(', ')}`);
+    console.log(
+      `Found 'TMR SEGA' signature at offsets: ${tagPos.map((p): string => '0x' + p.toString(16)).join(', ')}`
+    );
   } else {
     console.log(`Warning: 'TMR SEGA' signature not found (common header tag)`);
   }
@@ -134,6 +138,8 @@ const main = (): void => {
     },
     tickCycles: (c: number): void => psg.tickCycles(c),
     getState: () => psg.getState(),
+    getSample: () => psg.getSample(),
+    reset: () => psg.reset(),
   };
 
   const bus = new SmsBus(cart, vdpProxy, psgProxy);
@@ -200,7 +206,7 @@ const main = (): void => {
   // VDP register writes summary
   const regSummary = vdpRegWrites
     .map((cnt, idx) => (cnt > 0 ? `R${idx}x${cnt}` : ''))
-    .filter((s) => s !== '')
+    .filter(s => s !== '')
     .join(' ');
   console.log(`VDP reg writes: ${regSummary || '(none)'}`);
   console.log(`VDP reg1 VBlank IRQ enable seen: ${vdpReg1Enabled ? 'yes' : 'no'}`);
@@ -208,7 +214,9 @@ const main = (): void => {
     console.log(`VDP reg events (first ${vdpRegEvents.length}): ${vdpRegEvents.join(', ')}`);
   }
   console.log(`PSG writes: ${psgWrites}`);
-  console.log(`I/O reads: port 0x7E=${ioReads7E}${opts.override7E !== undefined ? ' (override '+opts.override7E.toString(16)+')' : ''}, 0xFE=${ioReadsFE}${opts.overrideFE !== undefined ? ' (override '+opts.overrideFE.toString(16)+')' : ''}, other=${ioReadsOther}`);
+  console.log(
+    `I/O reads: port 0x7E=${ioReads7E}${opts.override7E !== undefined ? ' (override ' + opts.override7E.toString(16) + ')' : ''}, 0xFE=${ioReadsFE}${opts.overrideFE !== undefined ? ' (override ' + opts.overrideFE.toString(16) + ')' : ''}, other=${ioReadsOther}`
+  );
   if (exception) {
     console.log(`Exception: ${exception.name}: ${exception.message}`);
     const st = cpu.getState();
@@ -224,4 +232,3 @@ const main = (): void => {
 };
 
 main();
-

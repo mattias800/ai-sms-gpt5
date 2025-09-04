@@ -170,18 +170,18 @@ const main = (): void => {
     write8: (addr: number, val: number): void => {
       const a = addr & 0xffff;
       if (breakMemWrite.has(a)) {
-        brokeOn = `mem-write ${hex(a,4)}=${hex(val)}`;
+        brokeOn = `mem-write ${hex(a, 4)}=${hex(val)}`;
       } else {
         for (const br of breakMemWriteVals) {
-          if (a === br.addr && ((val & br.mask) >>> 0) === ((br.value & br.mask) >>> 0)) {
-            brokeOn = `mem-write-val ${hex(a,4)}=${hex(val)} mask=${hex(br.mask)} want=${hex(br.value)}`;
+          if (a === br.addr && (val & br.mask) >>> 0 === (br.value & br.mask) >>> 0) {
+            brokeOn = `mem-write-val ${hex(a, 4)}=${hex(val)} mask=${hex(br.mask)} want=${hex(br.value)}`;
             break;
           }
         }
         if (!brokeOn) {
           for (const r of breakMemWriteRanges) {
             if (a >= r.start && a <= r.end) {
-              brokeOn = `mem-write-range ${hex(a,4)}=${hex(val)} in ${hex(r.start,4)}..${hex(r.end,4)}`;
+              brokeOn = `mem-write-range ${hex(a, 4)}=${hex(val)} in ${hex(r.start, 4)}..${hex(r.end, 4)}`;
               break;
             }
           }
@@ -191,7 +191,8 @@ const main = (): void => {
     },
     readIO8: (port: number): number => {
       const p = port & 0xff;
-      lastIOPort = p; lastIOIsWrite = false;
+      lastIOPort = p;
+      lastIOIsWrite = false;
       if (breakIo.has(p)) brokeOn = `io-read ${p.toString(16)}`;
       if (breakStatusRead && p === 0xbf) brokeOn = 'status-read';
       let ret: number;
@@ -203,24 +204,28 @@ const main = (): void => {
       const hc = gs ? (gs.lastHcRaw ?? 0) : 0;
       const ln = gs ? (gs.line ?? 0) : 0;
       if (traceReadPort !== null && p === (traceReadPort & 0xff) && traceReadRemain > 0) {
-        traceReadLog.push(`pc=${hex(lastPc,4)} port=${hex(p)} val=${hex(ret)} line=${ln} hc=${hex(hc)}`);
+        traceReadLog.push(`pc=${hex(lastPc, 4)} port=${hex(p)} val=${hex(ret)} line=${ln} hc=${hex(hc)}`);
         traceReadRemain--;
       }
       if (traceIOAllRemain > 0 && (traceIOAllSkip === null || p !== ((traceIOAllSkip as number) & 0xff))) {
-        traceReadLog.push(`pc=${hex(lastPc,4)} port=${hex(p)} val=${hex(ret)} line=${ln} hc=${hex(hc)}`);
+        traceReadLog.push(`pc=${hex(lastPc, 4)} port=${hex(p)} val=${hex(ret)} line=${ln} hc=${hex(hc)}`);
         traceIOAllRemain--;
       }
       if (breakIOReadMask !== null) {
         const matchVal = (ret & breakIOReadMask) >>> 0;
         const wantVal = (breakIOReadValue & breakIOReadMask) >>> 0;
-        const portOk = breakIOReadPortMask === null ? true : (((p & breakIOReadPortMask) >>> 0) === ((breakIOReadPortValue & breakIOReadPortMask) >>> 0));
+        const portOk =
+          breakIOReadPortMask === null
+            ? true
+            : (p & breakIOReadPortMask) >>> 0 === (breakIOReadPortValue & breakIOReadPortMask) >>> 0;
         if (portOk && matchVal === wantVal) brokeOn = `io-read-match p=${hex(p)} v=${hex(ret)}`;
       }
       return ret & 0xff;
     },
     writeIO8: (port: number, val: number): void => {
       const p = port & 0xff;
-      lastIOPort = p; lastIOIsWrite = true;
+      lastIOPort = p;
+      lastIOIsWrite = true;
       ioWriteCounts[p] = ((ioWriteCounts[p] ?? 0) + 1) >>> 0;
       if (breakIo.has(p)) brokeOn = `io-write ${p.toString(16)}`;
       // VDP control write tracking for register-write breaks and logging
@@ -239,14 +244,16 @@ const main = (): void => {
             const data = low;
             vdpLogPush(`CTL reg R${reg}=${hex(data)}`);
             for (const br of vdpRegBreaks) {
-              if (br.reg === reg && ((data & br.mask) === (br.value & br.mask))) {
+              if (br.reg === reg && (data & br.mask) === (br.value & br.mask)) {
                 brokeOn = `vdpreg R${reg}=${hex(data)}`;
                 break;
               }
             }
           } else {
             const addr = (((second & 0x3f) << 8) | low) & 0x3fff;
-            vdpLogPush(`CTL addr code=${code} hi=${hex(second)} lo=${hex(low)} addr=${hex(addr,4)}${code===3?' CRAM':''}`);
+            vdpLogPush(
+              `CTL addr code=${code} hi=${hex(second)} lo=${hex(low)} addr=${hex(addr, 4)}${code === 3 ? ' CRAM' : ''}`
+            );
           }
           vdpCtrlLatch = null;
         }
@@ -274,8 +281,8 @@ const main = (): void => {
         const gs = (vdp as any).getState?.();
         if (gs) {
           // Always log CRAM data writes; log other data writes only if vdpLogData is enabled
-          if (((gs.curCode & 0x03) === 3) || vdpLogData) {
-            vdpLogPush(`DATA code=${gs.curCode} addr=${hex(gs.curAddr,4)} val=${hex(val)}`);
+          if ((gs.curCode & 0x03) === 3 || vdpLogData) {
+            vdpLogPush(`DATA code=${gs.curCode} addr=${hex(gs.curAddr, 4)} val=${hex(val)}`);
           }
         }
       }
@@ -301,7 +308,9 @@ const main = (): void => {
 
   const dumpRegs = (): void => {
     const s = cpu.getState();
-    console.log(`AF=${hex((s.a << 8) | s.f, 4)} BC=${hex((s.b << 8) | s.c, 4)} DE=${hex((s.d << 8) | s.e, 4)} HL=${hex((s.h << 8) | s.l, 4)} IX=${hex(s.ix, 4)} IY=${hex(s.iy, 4)} SP=${hex(s.sp, 4)} PC=${hex(s.pc, 4)} I=${hex(s.i)} R=${hex(s.r)}`);
+    console.log(
+      `AF=${hex((s.a << 8) | s.f, 4)} BC=${hex((s.b << 8) | s.c, 4)} DE=${hex((s.d << 8) | s.e, 4)} HL=${hex((s.h << 8) | s.l, 4)} IX=${hex(s.ix, 4)} IY=${hex(s.iy, 4)} SP=${hex(s.sp, 4)} PC=${hex(s.pc, 4)} I=${hex(s.i)} R=${hex(s.r)}`
+    );
   };
 
   const dumpMem = (addr: number, len: number): void => {
@@ -323,7 +332,14 @@ const main = (): void => {
 
   // Step/run helpers with break and IRQ awareness
   let lastPc = 0;
-  const stepOnce = (): { cycles: number; irqA: boolean; nmiA: boolean; pcBefore: number; opBefore: number; vblankNow: boolean } => {
+  const stepOnce = (): {
+    cycles: number;
+    irqA: boolean;
+    nmiA: boolean;
+    pcBefore: number;
+    opBefore: number;
+    vblankNow: boolean;
+  } => {
     const pcBefore = cpu.getState().pc & 0xffff;
     lastPc = pcBefore;
     const opBefore = bus.read8(pcBefore) & 0xff;
@@ -332,7 +348,9 @@ const main = (): void => {
       const gs = (vdp as any).getState?.();
       const hc = gs ? (gs.lastHcRaw ?? 0) : 0;
       const ln = gs ? (gs.line ?? 0) : 0;
-      pcWatchLog.push(`#${stepCounter} pc=${hex(pcBefore,4)} op=${hex(opBefore)} line=${ln} hc=${hex(hc)} lastIO=${lastIOPort!==null?hex(lastIOPort):'--'}${lastIOIsWrite?'W':'R'}`);
+      pcWatchLog.push(
+        `#${stepCounter} pc=${hex(pcBefore, 4)} op=${hex(opBefore)} line=${ln} hc=${hex(hc)} lastIO=${lastIOPort !== null ? hex(lastIOPort) : '--'}${lastIOIsWrite ? 'W' : 'R'}`
+      );
     }
     // PC path capture (pre-instruction PC)
     if (pcPathRemain > 0) {
@@ -342,7 +360,10 @@ const main = (): void => {
     const { cycles, irqAccepted: irqA, nmiAccepted: nmiA } = cpu.stepOne();
     if (pcSampleInterval > 0) {
       pcSampleCounter++;
-      if (pcSampleCounter >= pcSampleInterval) { pcSampleCounter = 0; bumpPcCount(pcBefore); }
+      if (pcSampleCounter >= pcSampleInterval) {
+        pcSampleCounter = 0;
+        bumpPcCount(pcBefore);
+      }
     }
     vdp.tickCycles(cycles);
     psg.tickCycles(cycles);
@@ -358,27 +379,60 @@ const main = (): void => {
     for (let k = 0; k < maxSteps; k++) {
       const { cycles, irqA, nmiA, pcBefore, opBefore, vblankNow } = stepOnce();
       cyc += cycles;
-      if (breakPc.has(pcBefore)) { brokeOn = `pc ${pcBefore.toString(16).padStart(4, '0')}`; break; }
-      if (breakOnEI && opBefore === 0xfb) { brokeOn = 'ei'; break; }
-      if (breakOps.has(opBefore)) { brokeOn = `op ${opBefore.toString(16).padStart(2,'0')}`; break; }
+      if (breakPc.has(pcBefore)) {
+        brokeOn = `pc ${pcBefore.toString(16).padStart(4, '0')}`;
+        break;
+      }
+      if (breakOnEI && opBefore === 0xfb) {
+        brokeOn = 'ei';
+        break;
+      }
+      if (breakOps.has(opBefore)) {
+        brokeOn = `op ${opBefore.toString(16).padStart(2, '0')}`;
+        break;
+      }
       // Break on OUT (n),A (opcode D3 nn) or OUT (C),A (opcode ED 79)
       if (opBefore === 0xd3) {
         const pn = bus.read8((pcBefore + 1) & 0xffff) & 0xff;
-        if (breakOutPorts.has(pn)) { brokeOn = `out ${pn.toString(16).padStart(2,'0')}`; break; }
+        if (breakOutPorts.has(pn)) {
+          brokeOn = `out ${pn.toString(16).padStart(2, '0')}`;
+          break;
+        }
       } else if (opBefore === 0xed) {
         const op2 = bus.read8((pcBefore + 1) & 0xffff) & 0xff;
         // OUT (C),r family: ED 41,49,51,59,61,69,71,79
-        if (op2 === 0x41 || op2 === 0x49 || op2 === 0x51 || op2 === 0x59 || op2 === 0x61 || op2 === 0x69 || op2 === 0x71 || op2 === 0x79) {
+        if (
+          op2 === 0x41 ||
+          op2 === 0x49 ||
+          op2 === 0x51 ||
+          op2 === 0x59 ||
+          op2 === 0x61 ||
+          op2 === 0x69 ||
+          op2 === 0x71 ||
+          op2 === 0x79
+        ) {
           const cport = cpu.getState().c & 0xff;
-          if (breakOutPorts.has(cport)) { brokeOn = `outc ${cport.toString(16).padStart(2,'0')}`; break; }
+          if (breakOutPorts.has(cport)) {
+            brokeOn = `outc ${cport.toString(16).padStart(2, '0')}`;
+            break;
+          }
         }
       }
-      if (breakVBlank && vblankNow) { brokeOn = 'vblank'; break; }
+      if (breakVBlank && vblankNow) {
+        brokeOn = 'vblank';
+        break;
+      }
       if (breakDisplayOn) {
         const gs = (vdp as any).getState?.();
-        if (gs && gs.displayEnabled) { brokeOn = 'display-on'; break; }
+        if (gs && gs.displayEnabled) {
+          brokeOn = 'display-on';
+          break;
+        }
       }
-      if (untilIrq && (irqA || nmiA)) { brokeOn = irqA ? 'irq' : 'nmi'; break; }
+      if (untilIrq && (irqA || nmiA)) {
+        brokeOn = irqA ? 'irq' : 'nmi';
+        break;
+      }
       if (brokeOn) break; // IO break was set by proxy
     }
     if (brokeOn) console.log(`break: ${brokeOn}`);
@@ -424,36 +478,53 @@ const main = (): void => {
         const vals: number[] = [];
         while (i < cmds.length) {
           const tok = cmds[i]!;
-          if (/^(0x)?[0-9a-fA-F]+$/.test(tok)) { vals.push(toNum(tok)); i++; }
-          else break;
+          if (/^(0x)?[0-9a-fA-F]+$/.test(tok)) {
+            vals.push(toNum(tok));
+            i++;
+          } else break;
         }
         for (let k = 0; k < vals.length; k++) bus.write8((a + k) & 0xffff, (vals[k] ?? 0) & 0xff);
-        console.log(`wrote ${vals.length} byte(s) at ${hex(a,4)}`);
+        console.log(`wrote ${vals.length} byte(s) at ${hex(a, 4)}`);
         break;
       }
       case 'setr': {
         const rname = (cmds[i++]! || '').toLowerCase();
         const v = toNum(cmds[i++]!);
         const st = cpu.getState();
-        const set8 = (k: 'a'|'b'|'c'|'d'|'e'|'h'|'l', val: number): void => { (st as any)[k] = val & 0xff; };
-        const set16 = (k: 'ix'|'iy'|'sp'|'pc', val: number): void => { (st as any)[k] = val & 0xffff; };
-        if (rname === 'a' || rname === 'b' || rname === 'c' || rname === 'd' || rname === 'e' || rname === 'h' || rname === 'l') {
+        const set8 = (k: 'a' | 'b' | 'c' | 'd' | 'e' | 'h' | 'l', val: number): void => {
+          (st as any)[k] = val & 0xff;
+        };
+        const set16 = (k: 'ix' | 'iy' | 'sp' | 'pc', val: number): void => {
+          (st as any)[k] = val & 0xffff;
+        };
+        if (
+          rname === 'a' ||
+          rname === 'b' ||
+          rname === 'c' ||
+          rname === 'd' ||
+          rname === 'e' ||
+          rname === 'h' ||
+          rname === 'l'
+        ) {
           set8(rname as any, v);
         } else if (rname === 'ix' || rname === 'iy' || rname === 'sp' || rname === 'pc') {
           set16(rname as any, v);
         } else if (rname === 'hl') {
-          set16('ix', (st.ix & 0xffff)); // no-op to satisfy type
-          (st as any).h = (v >>> 8) & 0xff; (st as any).l = v & 0xff;
+          set16('ix', st.ix & 0xffff); // no-op to satisfy type
+          (st as any).h = (v >>> 8) & 0xff;
+          (st as any).l = v & 0xff;
         } else if (rname === 'bc') {
-          (st as any).b = (v >>> 8) & 0xff; (st as any).c = v & 0xff;
+          (st as any).b = (v >>> 8) & 0xff;
+          (st as any).c = v & 0xff;
         } else if (rname === 'de') {
-          (st as any).d = (v >>> 8) & 0xff; (st as any).e = v & 0xff;
+          (st as any).d = (v >>> 8) & 0xff;
+          (st as any).e = v & 0xff;
         } else {
           console.log(`setr: unknown register '${rname}'`);
           break;
         }
         cpu.setState(st);
-        console.log(`setr ${rname}=${rname.length===1?hex(v):hex(v,4)}`);
+        console.log(`setr ${rname}=${rname.length === 1 ? hex(v) : hex(v, 4)}`);
         break;
       }
       case 'disasm': {
@@ -533,7 +604,7 @@ const main = (): void => {
         const r = toNum(cmds[i++]!);
         const m = toNum(cmds[i++]!);
         const v = toNum(cmds[i++]!);
-        vdpRegBreaks.push({ reg: (r & 0x0f), mask: m & 0xff, value: v & 0xff });
+        vdpRegBreaks.push({ reg: r & 0x0f, mask: m & 0xff, value: v & 0xff });
         console.log(`breakvdpreg R${r & 0x0f} mask=${hex(m)} value=${hex(v)}`);
         break;
       }
@@ -586,8 +657,14 @@ const main = (): void => {
       }
       case 'traceioallskip': {
         const arg = cmds[i++]!;
-        if (arg === 'off') { traceIOAllSkip = null; console.log('traceioallskip off'); }
-        else { const sk = toNum(arg) & 0xff; traceIOAllSkip = sk; console.log(`traceioallskip port=${hex(sk)}`); }
+        if (arg === 'off') {
+          traceIOAllSkip = null;
+          console.log('traceioallskip off');
+        } else {
+          const sk = toNum(arg) & 0xff;
+          traceIOAllSkip = sk;
+          console.log(`traceioallskip port=${hex(sk)}`);
+        }
         break;
       }
       case 'showtrace': {
@@ -596,8 +673,11 @@ const main = (): void => {
         break;
       }
       case 'cleartrace': {
-        traceReadPort = null; traceReadRemain = 0; traceReadLog.length = 0;
-        traceIOAllRemain = 0; traceIOAllSkip = null;
+        traceReadPort = null;
+        traceReadRemain = 0;
+        traceReadLog.length = 0;
+        traceIOAllRemain = 0;
+        traceIOAllSkip = null;
         console.log('io read trace cleared');
         break;
       }
@@ -606,7 +686,7 @@ const main = (): void => {
         const entries: { p: number; c: number }[] = [];
         for (let p = 0; p < 256; p++) if ((ioReadCounts[p] ?? 0) > 0) entries.push({ p, c: ioReadCounts[p] as number });
         entries.sort((a, b) => b.c - a.c);
-        const line = entries.map((e) => `${hex(e.p)}:${e.c}`).join(' ');
+        const line = entries.map(e => `${hex(e.p)}:${e.c}`).join(' ');
         console.log(line || '(no reads)');
         break;
       }
@@ -617,9 +697,10 @@ const main = (): void => {
       }
       case 'iowstats': {
         const entries: { p: number; c: number }[] = [];
-        for (let p = 0; p < 256; p++) if ((ioWriteCounts[p] ?? 0) > 0) entries.push({ p, c: ioWriteCounts[p] as number });
+        for (let p = 0; p < 256; p++)
+          if ((ioWriteCounts[p] ?? 0) > 0) entries.push({ p, c: ioWriteCounts[p] as number });
         entries.sort((a, b) => b.c - a.c);
-        const line = entries.map((e) => `${hex(e.p)}:${e.c}`).join(' ');
+        const line = entries.map(e => `${hex(e.p)}:${e.c}`).join(' ');
         console.log(line || '(no writes)');
         break;
       }
@@ -646,34 +727,42 @@ const main = (): void => {
         break;
       }
       case 'clearvdplog': {
-        vdpLogNext = 0; vdpLogCount = 0;
+        vdpLogNext = 0;
+        vdpLogCount = 0;
         for (let k = 0; k < vdpLogSize; k++) vdpLog[k] = undefined;
         console.log('vdplog cleared');
         break;
       }
       case 'pcsample': {
         const arg = cmds[i++]!;
-        if (arg === 'off') pcSampleInterval = 0; else pcSampleInterval = Math.max(1, toNum(arg) | 0);
-        console.log(`pcsample ${pcSampleInterval>0?`every ${pcSampleInterval} steps`:'off'}`);
+        if (arg === 'off') pcSampleInterval = 0;
+        else pcSampleInterval = Math.max(1, toNum(arg) | 0);
+        console.log(`pcsample ${pcSampleInterval > 0 ? `every ${pcSampleInterval} steps` : 'off'}`);
         break;
       }
       case 'pcwatch': {
         const sub = cmds[i++]!;
         if (sub === 'clear') {
-          pcWatchSet.clear(); pcWatchLog.length = 0;
+          pcWatchSet.clear();
+          pcWatchLog.length = 0;
           console.log('pcwatch cleared');
         } else if (sub === 'list') {
           if (pcWatchSet.size === 0) console.log('(none)');
-          else console.log(Array.from(pcWatchSet).map((a)=>hex(a,4)).join(' '));
+          else
+            console.log(
+              Array.from(pcWatchSet)
+                .map(a => hex(a, 4))
+                .join(' ')
+            );
         } else if (sub === 'del') {
           const a = toNum(cmds[i++]!);
           pcWatchSet.delete(a & 0xffff);
-          console.log(`pcwatch del ${hex(a,4)}`);
+          console.log(`pcwatch del ${hex(a, 4)}`);
         } else {
           // treat token as address
           const a = toNum(sub);
           pcWatchSet.add(a & 0xffff);
-          console.log(`pcwatch add ${hex(a,4)}`);
+          console.log(`pcwatch add ${hex(a, 4)}`);
         }
         break;
       }
@@ -689,29 +778,37 @@ const main = (): void => {
       }
       case 'pcpath': {
         const arg = cmds[i++]!;
-        if (arg === 'off') { pcPathRemain = 0; pcPathLog.length = 0; console.log('pcpath off'); }
-        else { pcPathRemain = Math.max(1, toNum(arg) | 0); pcPathLog.length = 0; console.log(`pcpath capturing next ${pcPathRemain} steps`); }
+        if (arg === 'off') {
+          pcPathRemain = 0;
+          pcPathLog.length = 0;
+          console.log('pcpath off');
+        } else {
+          pcPathRemain = Math.max(1, toNum(arg) | 0);
+          pcPathLog.length = 0;
+          console.log(`pcpath capturing next ${pcPathRemain} steps`);
+        }
         break;
       }
       case 'showpcpath': {
         if (pcPathLog.length === 0) console.log('(no pcpath)');
-        else console.log(pcPathLog.map((pc)=>hex(pc,4)).join(' -> '));
+        else console.log(pcPathLog.map(pc => hex(pc, 4)).join(' -> '));
         break;
       }
       case 'clearpcpath': {
-        pcPathRemain = 0; pcPathLog.length = 0;
+        pcPathRemain = 0;
+        pcPathLog.length = 0;
         console.log('pcpath cleared');
         break;
       }
       case 'pcstats': {
         const n = i < cmds.length && !isNaN(Number(cmds[i])) ? Math.max(1, toNum(cmds[i++]!) | 0) : 20;
         const arr = Array.from(pcCounts.entries());
-        arr.sort((a,b)=>b[1]-a[1]);
-        for (let k=0;k<Math.min(n,arr.length);k++) {
-          const [pc,c]=arr[k]!;
-          console.log(`${hex(pc,4)}: ${c}`);
+        arr.sort((a, b) => b[1] - a[1]);
+        for (let k = 0; k < Math.min(n, arr.length); k++) {
+          const [pc, c] = arr[k]!;
+          console.log(`${hex(pc, 4)}: ${c}`);
         }
-        if (arr.length===0) console.log('(no samples)');
+        if (arr.length === 0) console.log('(no samples)');
         break;
       }
       case 'clearpcstats': {
@@ -730,11 +827,20 @@ const main = (): void => {
           console.log('VDP getState unavailable');
           break;
         }
-        const regsStr = gs.regs.slice(0, 16).map((r: number, i: number): string => `R${i}=${hex(r)}`).join(' ');
+        const regsStr = gs.regs
+          .slice(0, 16)
+          .map((r: number, i: number): string => `R${i}=${hex(r)}`)
+          .join(' ');
         console.log(`VDP regs: ${regsStr}`);
-        console.log(`VDP status=${hex(gs.status)} line=${gs.line}/${gs.linesPerFrame} vblankIrq=${gs.vblankIrqEnabled?'on':'off'} display=${gs.displayEnabled?'on':'off'}`);
-        console.log(`VDP bases: name=${hex(gs.nameTableBase,4)} sprAttr=${hex(gs.spriteAttrBase,4)} sprPat=${hex(gs.spritePatternBase,4)} border=${hex(gs.borderColor)}`);
-        console.log(`VDP cur: addr=${hex(gs.curAddr,4)} code=${hex(gs.curCode)} vramW=${gs.vramWrites} cramW=${gs.cramWrites} lastCRAM[${gs.lastCramIndex>=0?hex(gs.lastCramIndex):'--'}]=${hex(gs.lastCramValue)}`);
+        console.log(
+          `VDP status=${hex(gs.status)} line=${gs.line}/${gs.linesPerFrame} vblankIrq=${gs.vblankIrqEnabled ? 'on' : 'off'} display=${gs.displayEnabled ? 'on' : 'off'}`
+        );
+        console.log(
+          `VDP bases: name=${hex(gs.nameTableBase, 4)} sprAttr=${hex(gs.spriteAttrBase, 4)} sprPat=${hex(gs.spritePatternBase, 4)} border=${hex(gs.borderColor)}`
+        );
+        console.log(
+          `VDP cur: addr=${hex(gs.curAddr, 4)} code=${hex(gs.curCode)} vramW=${gs.vramWrites} cramW=${gs.cramWrites} lastCRAM[${gs.lastCramIndex >= 0 ? hex(gs.lastCramIndex) : '--'}]=${hex(gs.lastCramValue)}`
+        );
         break;
       }
       case 'vram': {
@@ -749,7 +855,7 @@ const main = (): void => {
         void vdp.readPort(0xbe);
         const bytes: string[] = [];
         for (let k = 0; k < len; k++) bytes.push(hex(vdp.readPort(0xbe)));
-        console.log(`${hex(addr,4)}: ${bytes.join(' ')}`);
+        console.log(`${hex(addr, 4)}: ${bytes.join(' ')}`);
         break;
       }
       case 'vramcur': {
@@ -768,19 +874,25 @@ const main = (): void => {
         void vdp.readPort(0xbe);
         const bytes: string[] = [];
         for (let k = 0; k < len; k++) bytes.push(hex(vdp.readPort(0xbe)));
-        console.log(`${hex(start,4)}: ${bytes.join(' ')}`);
+        console.log(`${hex(start, 4)}: ${bytes.join(' ')}`);
         break;
       }
       case 'cram': {
         const gs = (vdp as any).getState?.();
-        if (!gs) { console.log('VDP getState unavailable'); break; }
-        const bytes = (gs.cram as number[]).map((x: number)=>hex(x)).join(' ');
+        if (!gs) {
+          console.log('VDP getState unavailable');
+          break;
+        }
+        const bytes = (gs.cram as number[]).map((x: number) => hex(x)).join(' ');
         console.log(`CRAM: ${bytes}`);
         break;
       }
       case 'render': {
         const gs = (vdp as any).getState?.();
-        if (!gs) { console.log('VDP getState unavailable'); break; }
+        if (!gs) {
+          console.log('VDP getState unavailable');
+          break;
+        }
         const nameBase = gs.nameTableBase & 0x3fff;
         const entries = 32 * 28; // assume mode with 2-byte entries
         // Read name table bytes
@@ -799,13 +911,16 @@ const main = (): void => {
             const tile = ((lo | ((hi & 0x03) << 8)) & 0x3ff) >>> 0; // 10-bit tile index
             cols.push(tile.toString(16).toUpperCase().padStart(3, '0'));
           }
-          console.log(`${row.toString().padStart(2,'0')}: ${cols.join(' ')}`);
+          console.log(`${row.toString().padStart(2, '0')}: ${cols.join(' ')}`);
         }
         break;
       }
       case 'renderocc': {
         const gs = (vdp as any).getState?.();
-        if (!gs) { console.log('VDP getState unavailable'); break; }
+        if (!gs) {
+          console.log('VDP getState unavailable');
+          break;
+        }
         const nameBase = gs.nameTableBase & 0x3fff;
         const patBase = gs.bgPatternBase & 0x3fff;
         const entries = 32 * 28;
@@ -836,7 +951,7 @@ const main = (): void => {
             const tile = ((lo | ((hi & 0x03) << 8)) & 0x3ff) >>> 0;
             cols.push(tileHasData(tile) ? '##' : '..');
           }
-          console.log(`${row.toString().padStart(2,'0')}: ${cols.join(' ')}`);
+          console.log(`${row.toString().padStart(2, '0')}: ${cols.join(' ')}`);
         }
         break;
       }
@@ -882,7 +997,7 @@ const main = (): void => {
       case 'breakmemw': {
         const a = toNum(cmds[i++]!);
         breakMemWrite.add(a & 0xffff);
-        console.log(`breakmemw ${hex(a,4)}`);
+        console.log(`breakmemw ${hex(a, 4)}`);
         break;
       }
       case 'breakmemwrange': {
@@ -891,7 +1006,7 @@ const main = (): void => {
         const start = Math.min(s & 0xffff, e & 0xffff);
         const end = Math.max(s & 0xffff, e & 0xffff);
         breakMemWriteRanges.push({ start, end });
-        console.log(`breakmemwrange ${hex(start,4)}..${hex(end,4)}`);
+        console.log(`breakmemwrange ${hex(start, 4)}..${hex(end, 4)}`);
         break;
       }
       case 'breakmemwval': {
@@ -899,7 +1014,7 @@ const main = (): void => {
         const m = toNum(cmds[i++]!);
         const v = toNum(cmds[i++]!);
         breakMemWriteVals.push({ addr: a & 0xffff, mask: m & 0xff, value: v & 0xff });
-        console.log(`breakmemwval ${hex(a,4)} mask=${hex(m)} value=${hex(v)}`);
+        console.log(`breakmemwval ${hex(a, 4)} mask=${hex(m)} value=${hex(v)}`);
         break;
       }
       case 'findop': {
@@ -909,7 +1024,7 @@ const main = (): void => {
         for (let a = 0; a <= 0xffff && matches.length < lim; a++) {
           if ((bus.read8(a) & 0xff) === (b & 0xff)) matches.push(a);
         }
-        console.log(`findop ${hex(b)}: ${matches.map((a)=>hex(a,4)).join(' ')}`);
+        console.log(`findop ${hex(b)}: ${matches.map(a => hex(a, 4)).join(' ')}`);
         break;
       }
       case 'findbytes': {
@@ -917,11 +1032,16 @@ const main = (): void => {
         const bytes: number[] = [];
         while (i < cmds.length) {
           const tok = cmds[i]!;
-          if (/^(0x)?[0-9a-fA-F]{1,2}$/.test(tok)) { bytes.push(toNum(tok) & 0xff); i++; }
-          else break;
+          if (/^(0x)?[0-9a-fA-F]{1,2}$/.test(tok)) {
+            bytes.push(toNum(tok) & 0xff);
+            i++;
+          } else break;
         }
         const lim = i < cmds.length && !isNaN(Number(cmds[i])) ? toNum(cmds[i++]!) : 20;
-        if (bytes.length === 0) { console.log('findbytes: need at least one byte'); break; }
+        if (bytes.length === 0) {
+          console.log('findbytes: need at least one byte');
+          break;
+        }
         const matches: number[] = [];
         outer: for (let a = 0; a <= 0xffff && matches.length < lim; a++) {
           for (let k = 0; k < bytes.length; k++) {
@@ -929,12 +1049,15 @@ const main = (): void => {
           }
           matches.push(a);
         }
-        console.log(`findbytes ${bytes.map((b)=>hex(b)).join(' ')}: ${matches.map((a)=>hex(a,4)).join(' ')}`);
+        console.log(`findbytes ${bytes.map(b => hex(b)).join(' ')}: ${matches.map(a => hex(a, 4)).join(' ')}`);
         break;
       }
       case 'satdump': {
         const gs = (vdp as any).getState?.();
-        if (!gs) { console.log('VDP getState unavailable'); break; }
+        if (!gs) {
+          console.log('VDP getState unavailable');
+          break;
+        }
         const count = (i < cmds.length && !isNaN(Number(cmds[i])) ? toNum(cmds[i++]!) : 16) | 0;
         const satBase = gs.spriteAttrBase & 0x3fff;
         // Each sprite 4 bytes; dump count entries
@@ -946,7 +1069,7 @@ const main = (): void => {
           const b1 = vdp.readPort(0xbe) & 0xff;
           const b2 = vdp.readPort(0xbe) & 0xff;
           const b3 = vdp.readPort(0xbe) & 0xff;
-          console.log(`S${sidx.toString().padStart(2,'0')}: ${hex(b0)} ${hex(b1)} ${hex(b2)} ${hex(b3)}`);
+          console.log(`S${sidx.toString().padStart(2, '0')}: ${hex(b0)} ${hex(b1)} ${hex(b2)} ${hex(b3)}`);
         }
         break;
       }
@@ -955,7 +1078,7 @@ const main = (): void => {
         const st = cpu.getState();
         (st as any).pc = a & 0xffff;
         cpu.setState(st);
-        console.log(`setpc ${hex(a,4)}`);
+        console.log(`setpc ${hex(a, 4)}`);
         break;
       }
       case 'clearbreaks': {
@@ -990,4 +1113,3 @@ const main = (): void => {
 };
 
 main();
-

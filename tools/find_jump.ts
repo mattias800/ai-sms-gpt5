@@ -1,16 +1,17 @@
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
 import { readFileSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import { SmsBus } from '../bus/bus.js';
-import type { Cartridge } from '../bus/bus.js';
+import { createMachine } from '../src/machine/machine.js';
+import { SmsBus } from '../src/bus/bus.js';
+import type { Cartridge } from '../src/bus/bus.js';
 
 async function main(): Promise<void> {
   const rom = new Uint8Array(readFileSync('./sonic.sms'));
   const cart: Cartridge = { rom };
-  
+
   let lastPC = 0;
   let callCount = 0;
   let step = 0;
-  
+
   const m = createMachine({
     cart,
     fastBlocks: true,
@@ -18,17 +19,17 @@ async function main(): Promise<void> {
       onTrace: (ev): void => {
         const pc = (ev.pcBefore ?? 0) & 0xffff;
         step++;
-        
+
         // Track calls to 0x4012
         if (pc === 0x02e2 && ev.opcode === 0xcd) {
           callCount++;
           console.log(`Step ${step}: CALL 4012 from PC=0x02e2 (count=${callCount})`);
         }
-        
+
         // Track when we reach 0x4012
         if (pc === 0x4012) {
           console.log(`Step ${step}: Reached 0x4012!`);
-          
+
           // Read what's at 0x4012 after bank switching
           const bus = m.getBus();
           console.log('\nCode at 0x4012 after bank switch:');
@@ -37,19 +38,19 @@ async function main(): Promise<void> {
             process.stdout.write(byte.toString(16).padStart(2, '0') + ' ');
           }
           console.log('\n');
-          
+
           process.exit(0);
         }
-        
+
         // Track JP 1C49
         if (pc === 0x02d4 && ev.opcode === 0xc3) {
           console.log(`Step ${step}: JP 1C49 from PC=0x02d4`);
         }
-        
+
         if (pc === 0x1c49) {
           console.log(`Step ${step}: Reached 0x1c49!`);
         }
-        
+
         lastPC = pc;
       },
       traceDisasm: false,
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
   const bus = m.getBus() as SmsBus;
   const origReadIO8 = bus.readIO8.bind(bus);
   let hcReads = 0;
-  
+
   bus.readIO8 = (port: number): number => {
     const p = port & 0xff;
     if (p === 0x7e) {
@@ -75,15 +76,15 @@ async function main(): Promise<void> {
   };
 
   const vdp = m.getVDP();
-  const st0 = vdp.getState ? vdp.getState() : undefined;
+  const st0 = vdp.getState ? vdp.getState?.() : undefined;
   const cyclesPerFrame = (st0?.cyclesPerLine ?? 228) * (st0?.linesPerFrame ?? 262);
-  
+
   console.log('Looking for jumps to key addresses...\n');
-  
+
   // Run for many frames
   for (let frame = 0; frame < 100; frame++) {
     m.runCycles(cyclesPerFrame);
-    
+
     if (frame === 10) {
       console.log('\nAfter 10 frames, still no jump to 0x4012 or 0x1c49');
       console.log(`Last PC: 0x${lastPC.toString(16).padStart(4, '0')}`);
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+main().catch(e => {
   console.error(e);
   process.exit(1);
 });

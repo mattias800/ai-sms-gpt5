@@ -8,18 +8,18 @@ const cartFromBanks = (banks: number): Cartridge => {
 };
 
 describe('Bus edge behaviors', (): void => {
-  it('write to 0xFFFF (SRAM control) is ignored without side-effects', (): void => {
+  it('write to 0xFFFF controls bank in slot 2 (0x8000-0xBFFF)', (): void => {
     const bus = new SmsBus(cartFromBanks(4), null);
     // Verify initial bank sentinels
     expect(bus.read8(0x0000)).toBe(0);
     expect(bus.read8(0x4000)).toBe(1);
     expect(bus.read8(0x8000)).toBe(2);
-    // Write to 0xFFFF control register
+    // Write to 0xFFFF control register - selects bank (0x99 % 4 = 1) in slot 2
     bus.write8(0xffff, 0x99);
-    // Sentinels unchanged
+    // Slot 2 now shows bank 1
     expect(bus.read8(0x0000)).toBe(0);
     expect(bus.read8(0x4000)).toBe(1);
-    expect(bus.read8(0x8000)).toBe(2);
+    expect(bus.read8(0x8000)).toBe(1); // Changed from 2 to 1
   });
 
   it('readIO8 default returns 0xFF when no VDP and not PSG port', (): void => {

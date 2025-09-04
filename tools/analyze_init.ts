@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 const rom = readFileSync('./sonic.sms');
 
@@ -7,22 +7,22 @@ console.log('=== Sonic 1 SMS Initialization Analysis ===\n');
 
 // Show the code from 0x0280 to 0x02B5
 console.log('ROM bytes from 0x0280 to 0x02B5:');
-for (let addr = 0x0280; addr <= 0x02B5; addr += 16) {
+for (let addr = 0x0280; addr <= 0x02b5; addr += 16) {
   process.stdout.write(`0x${addr.toString(16).padStart(4, '0')}: `);
-  for (let i = 0; i < 16 && addr + i <= 0x02B5; i++) {
-    process.stdout.write(rom[addr + i]!.toString(16).padStart(2, '0') + ' ');
+  for (let i = 0; i < 16 && addr + i <= 0x02b5; i++) {
+    process.stdout.write((rom[addr + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
   }
   console.log();
 }
 
 console.log('\nDisassembly from 0x028B (where we jump to):');
-const readFn = (addr: number): number => rom[addr] ?? 0;
-let pc = 0x028B;
-while (pc <= 0x02B2) {
+const readFn = (addr: number): number => rom[addr] ?? 0 ?? 0;
+let pc = 0x028b;
+while (pc <= 0x02b2) {
   const dis = disassembleOne(readFn, pc);
   const bytes = [];
   for (let i = 0; i < dis.length; i++) {
-    bytes.push(rom[pc + i]!.toString(16).padStart(2, '0'));
+    bytes.push((rom[pc + i] ?? 0)!.toString(16).padStart(2, '0'));
   }
   console.log(`0x${pc.toString(16).padStart(4, '0')}: ${dis.text.padEnd(20)} ; ${bytes.join(' ')}`);
   pc += dis.length;
@@ -45,13 +45,13 @@ console.log('The jump target 0x0284 contains:');
 const target = 0x0284;
 process.stdout.write(`0x${target.toString(16).padStart(4, '0')}: `);
 for (let i = 0; i < 8; i++) {
-  process.stdout.write(rom[target + i]!.toString(16).padStart(2, '0') + ' ');
+  process.stdout.write((rom[target + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
 
 // Check what's special about the bytes
-const byte1 = rom[0x0284]!;
-const byte2 = rom[0x0285]!;
+const byte1 = (rom[0x0284] ?? 0)!;
+const byte2 = (rom[0x0285] ?? 0)!;
 console.log(`\nFirst bytes at 0x0284: 0x${byte1.toString(16)} 0x${byte2.toString(16)}`);
 console.log('This looks like data, not code.');
 
@@ -69,7 +69,7 @@ console.log('\nAt 0x0311 (loaded into DE):');
 const de_target = 0x0311;
 process.stdout.write(`0x${de_target.toString(16).padStart(4, '0')}: `);
 for (let i = 0; i < 16; i++) {
-  process.stdout.write(rom[de_target + i]!.toString(16).padStart(2, '0') + ' ');
+  process.stdout.write((rom[de_target + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
 
@@ -80,7 +80,7 @@ for (let i = 0; i < 5; i++) {
   const dis = disassembleOne(readFn, pc);
   const bytes = [];
   for (let j = 0; j < dis.length; j++) {
-    bytes.push(rom[pc + j]!.toString(16).padStart(2, '0'));
+    bytes.push((rom[pc + j] ?? 0)!.toString(16).padStart(2, '0'));
   }
   console.log(`0x${pc.toString(16).padStart(4, '0')}: ${dis.text.padEnd(20)} ; ${bytes.join(' ')}`);
   pc += dis.length;
@@ -97,5 +97,5 @@ console.log('The LDIR clears 0xC001-0xDFEF with zeros');
 console.log('The jump to 0x0284 expects to find code there');
 console.log('This suggests either:');
 console.log('1. The mapper should map different ROM to 0x0284 after 0x80 write');
-console.log('2. The game expects to copy code there (but we don\'t see that)');
-console.log('3. There\'s a special hardware behavior we\'re missing');
+console.log("2. The game expects to copy code there (but we don't see that)");
+console.log("3. There's a special hardware behavior we're missing");

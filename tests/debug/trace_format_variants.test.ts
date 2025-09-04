@@ -12,7 +12,7 @@ describe('Debug trace formatter branch variants', (): void => {
       nmiAccepted: false,
     } as TraceEvent;
     const s = formatTrace(ev, { showBytes: true, showFlags: true, uppercaseHex: false });
-    expect(s).toMatch(/1234: <INT>  cyc=13 IRQ/);
+    expect(s).toMatch(/1234: <INT> {2}cyc=13 IRQ/);
     // Lowercase hex
     expect(s).toMatch(/^1234:/);
   });
@@ -45,7 +45,7 @@ describe('Debug trace formatter branch variants', (): void => {
       regs,
     };
     const s = formatTrace(ev, { showBytes: true, showFlags: true, uppercaseHex: false });
-    expect(s).toMatch(/1000: LD B,12  06 12  cyc=7/);
+    expect(s).toMatch(/1000: LD B,12 {2}06 12 {2}cyc=7/);
     expect(s).toMatch(/AF=1200 BC=3456 DE=789a HL=bcde IX=2000 IY=3000 SP=ff00 PC=4000 I=aa R=55/);
   });
 
@@ -58,6 +58,6 @@ describe('Debug trace formatter branch variants', (): void => {
       nmiAccepted: true,
     } as TraceEvent;
     const s = formatTrace(ev, { showBytes: false, showFlags: false });
-    expect(s).toMatch(/ABCD: <INT>  cyc=11 NMI/);
+    expect(s).toMatch(/ABCD: <INT> {2}cyc=11 NMI/);
   });
 });

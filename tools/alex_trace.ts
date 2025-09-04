@@ -1,7 +1,8 @@
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
 import { readFileSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import type { Cartridge } from '../bus/bus.js';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { createMachine } from '../src/machine/machine.js';
+import type { Cartridge } from '../src/bus/bus.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 const romFile = './Alex Kidd - The Lost Stars (UE) [!].sms';
 
@@ -16,9 +17,9 @@ for (let addr = 0; addr < 128; addr += 16) {
   let hex = '';
   let ascii = '';
   for (let i = 0; i < 16; i++) {
-    const byte = rom[addr + i]!;
+    const byte = (rom[addr + i] ?? 0)!;
     hex += byte.toString(16).padStart(2, '0') + ' ';
-    ascii += (byte >= 32 && byte < 127) ? String.fromCharCode(byte) : '.';
+    ascii += byte >= 32 && byte < 127 ? String.fromCharCode(byte) : '.';
   }
   console.log(`0x${addr.toString(16).padStart(4, '0')}: ${hex} ${ascii}`);
 }
@@ -26,24 +27,24 @@ for (let addr = 0; addr < 128; addr += 16) {
 // Disassemble first few instructions
 console.log('\nFirst instructions:');
 for (let addr = 0; addr < 32; ) {
-  const result = disassembleOne((a) => rom[a] ?? 0, addr);
+  const result = disassembleOne(a => rom[a] ?? 0 ?? 0, addr);
   console.log(`0x${addr.toString(16).padStart(4, '0')}: ${result.text}`);
   addr += result.length;
 }
 
 const cart: Cartridge = { rom };
-const m = createMachine({ 
-  cart, 
+const m = createMachine({
+  cart,
   fastBlocks: true,
   trace: {
-    onTrace: (ev) => {
+    onTrace: (ev: TraceEvent) => {
       if (ev.pcBefore < 10 || (ev.pcBefore >= 0x38 && ev.pcBefore < 0x50)) {
         console.log(`PC=${ev.pcBefore.toString(16).padStart(4, '0')}`);
       }
     },
     traceDisasm: false,
     traceRegs: false,
-  }
+  },
 });
 
 console.log('\nRunning first 1000 cycles...');
@@ -58,7 +59,7 @@ console.log(`IFF1=${cpuState.iff1}, IFF2=${cpuState.iff2}, IM=${cpuState.im}`);
 
 // Check VDP state
 const vdp = m.getVDP();
-const vdpState = vdp.getState ? vdp.getState() : undefined;
+const vdpState = vdp.getState ? vdp.getState?.() : undefined;
 if (vdpState) {
   console.log(`\nVDP State:`);
   console.log(`Display: ${vdpState.displayEnabled}`);
@@ -70,17 +71,17 @@ if (vdpState) {
 console.log('\n\nRunning 10000 more cycles...');
 const pcCounts = new Map<number, number>();
 let lastPC = 0;
-const m2 = createMachine({ 
-  cart, 
+const m2 = createMachine({
+  cart,
   fastBlocks: true,
   trace: {
-    onTrace: (ev) => {
+    onTrace: (ev: TraceEvent) => {
       lastPC = ev.pcBefore;
       pcCounts.set(ev.pcBefore, (pcCounts.get(ev.pcBefore) ?? 0) + 1);
     },
     traceDisasm: false,
     traceRegs: false,
-  }
+  },
 });
 
 m2.runCycles(10000);
@@ -91,6 +92,6 @@ const sorted = Array.from(pcCounts.entries())
   .slice(0, 10);
 
 for (const [pc, count] of sorted) {
-  const result = disassembleOne((a) => rom[a & 0x3fff] ?? 0, pc);
+  const result = disassembleOne(a => rom[a & 0x3fff] ?? 0 ?? 0, pc);
   console.log(`0x${pc.toString(16).padStart(4, '0')}: ${count}x - ${result.text}`);
 }

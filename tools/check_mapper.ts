@@ -6,14 +6,19 @@ console.log('=== Checking Sonic 1 Mapper Type ===\n');
 
 // Check header
 console.log('ROM Header at 0x7FF0:');
-const header = rom.subarray(0x7FF0, 0x8000);
+const header = rom.subarray(0x7ff0, 0x8000);
 let headerStr = '';
 for (let i = 0; i < 16; i++) {
   const c = header[i]!;
-  headerStr += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.';
+  headerStr += c >= 32 && c < 127 ? String.fromCharCode(c) : '.';
 }
 console.log('Text:', headerStr);
-console.log('Hex:', Array.from(header.subarray(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+console.log(
+  'Hex:',
+  Array.from(header.subarray(0, 16))
+    .map((b: any) => b.toString(16).padStart(2, '0'))
+    .join(' ')
+);
 
 // Check for Codemasters signature
 console.log('\n=== Codemasters Mapper Check ===');
@@ -25,10 +30,15 @@ console.log('- Different bank register locations');
 // Check first bytes
 console.log('\nFirst 16 bytes of ROM:');
 const first = rom.subarray(0, 16);
-console.log('Hex:', Array.from(first).map(b => b.toString(16).padStart(2, '0')).join(' '));
+console.log(
+  'Hex:',
+  Array.from(first)
+    .map((b: any) => b.toString(16).padStart(2, '0'))
+    .join(' ')
+);
 
 // Standard SMS starts with F3 (DI) or similar
-if (rom[0] === 0xF3) {
+if (rom[0] === 0xf3) {
   console.log('Starts with DI (0xF3) - standard SMS ROM');
 } else {
   console.log(`Starts with 0x${rom[0]?.toString(16).padStart(2, '0')} - might be non-standard`);
@@ -58,7 +68,7 @@ console.log('\nAt 0x4000 + 0x284 = 0x4284:');
 const addr4284 = 0x4284;
 process.stdout.write('Bytes: ');
 for (let i = 0; i < 8; i++) {
-  process.stdout.write(rom[addr4284 + i]!.toString(16).padStart(2, '0') + ' ');
+  process.stdout.write((rom[addr4284 + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
 
@@ -67,7 +77,7 @@ console.log('\nAt 0x8000 + 0x284 = 0x8284:');
 const addr8284 = 0x8284;
 process.stdout.write('Bytes: ');
 for (let i = 0; i < 8; i++) {
-  process.stdout.write(rom[addr8284 + i]!.toString(16).padStart(2, '0') + ' ');
+  process.stdout.write((rom[addr8284 + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
 

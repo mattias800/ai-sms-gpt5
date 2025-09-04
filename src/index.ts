@@ -7,6 +7,7 @@ export * from './cpu/z80/flags.js';
 export * from './cpu/z80/z80.js';
 export * from './cpu/z80/disasm.js';
 export * from './vdp/vdp.js';
+export * from './io/controller.js';
 export * from './machine/machine.js';
 export * from './machine/waits.js';
 export * from './debug/trace.js';

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS/Game Gear Emulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: white;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .emulator-container {
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        
+        #screen {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            width: 512px;
+            height: 384px;
+            background: #000;
+            border: 2px solid #333;
+            cursor: crosshair;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #2d3748;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-label {
+            background: #48bb78;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+            display: inline-block;
+        }
+        
+        .file-label:hover {
+            background: #38a169;
+        }
+        
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            font-size: 12px;
+            max-width: 512px;
+        }
+        
+        .keyboard-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .key-mapping {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+        
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            min-height: 40px;
+        }
+        
+        .fps {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 600px) {
+            #screen {
+                width: 100%;
+                height: auto;
+                aspect-ratio: 4/3;
+            }
+            
+            .keyboard-info {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>SMS/Game Gear Emulator</h1>
+    
+    <div class="emulator-container">
+        <canvas id="screen" width="256" height="192"></canvas>
+        
+        <div class="controls">
+            <label for="rom-input" class="file-label">
+                Load ROM
+            </label>
+            <input type="file" id="rom-input" accept=".sms,.gg,.sg,.bin">
+            
+            <button id="pause-btn">Pause</button>
+            <button id="reset-btn">Reset</button>
+            <button id="mute-btn">Mute</button>
+            <button id="save-state-btn" disabled>Save State</button>
+            <button id="load-state-btn" disabled>Load State</button>
+        </div>
+        
+        <div class="status" id="status">Ready to load ROM...</div>
+    </div>
+    
+    <div class="info">
+        <h3>Keyboard Controls:</h3>
+        <div class="keyboard-info">
+            <div class="key-mapping">
+                <span>Arrow Keys</span>
+                <span>D-Pad</span>
+            </div>
+            <div class="key-mapping">
+                <span>Z</span>
+                <span>Button 1</span>
+            </div>
+            <div class="key-mapping">
+                <span>X</span>
+                <span>Button 2</span>
+            </div>
+            <div class="key-mapping">
+                <span>Enter</span>
+                <span>Start (GG)</span>
+            </div>
+        </div>
+        <p style="margin-top: 10px; opacity: 0.8;">
+            Drag & drop ROM files or click "Load ROM" to start playing!
+        </p>
+    </div>
+    
+    <div class="fps" id="fps">FPS: 0</div>
+    
+    <script type="module" src="emulator.js"></script>
+</body>
+</html>

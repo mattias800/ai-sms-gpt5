@@ -873,32 +873,15 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
           // Compute current HL/DE/BC
           let hl = ((s.h << 8) | s.l) & 0xffff;
           let de = ((s.d << 8) | s.e) & 0xffff;
-          let bc = ((s.b << 8) | s.c) & 0xffff;
+          const bc = ((s.b << 8) | s.c) & 0xffff;
           if (bc === 0) {
-            // Degenerate: behave like final iteration
-            const val0 = read8(hl);
-            write8(de, val0);
-            if (sub === 0xb0) {
-              // LDIR increment
-              hl = (hl + 1) & 0xffff;
-              de = (de + 1) & 0xffff;
-            } else {
-              // LDDR decrement
-              hl = (hl - 1) & 0xffff;
-              de = (de - 1) & 0xffff;
-            }
-            bc = (bc - 1) & 0xffff;
-            s.h = (hl >>> 8) & 0xff;
-            s.l = hl & 0xff;
-            s.d = (de >>> 8) & 0xff;
-            s.e = de & 0xff;
-            s.b = (bc >>> 8) & 0xff;
-            s.c = bc & 0xff;
-            let f0 = s.f & (FLAG_S | FLAG_Z | FLAG_C);
-            const sum0 = (s.a + val0) & 0xff;
-            if (sum0 & 0x08) f0 |= FLAG_3;
-            if (sum0 & 0x20) f0 |= FLAG_5;
-            s.f = f0; // PV cleared since BC became zero
+            // When BC=0, LDIR/LDDR does nothing and just continues
+            // Flags: preserve S,Z,C; clear H,N,PV; set F3/F5 from A
+            let f = s.f & (FLAG_S | FLAG_Z | FLAG_C);
+            if (s.a & 0x08) f |= FLAG_3;
+            if (s.a & 0x20) f |= FLAG_5;
+            s.f = f;
+            // Just 16 cycles for the instruction fetch/decode
             return mkRes(16, false, false);
           }
           // Number of iterations to finish
@@ -932,10 +915,10 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
           if (sum & 0x20) f |= FLAG_5;
           s.f = f;
           // Cycles: (count-1)*21 + 16
-          const totalCycles = count > 0 ? (count - 1) * 21 + 16 : 16;
-          // Advance PC past instruction (do not repeat)
-          s.pc = (s.pc + 2) & 0xffff;
-          return mkRes(totalCycles, false, false);
+          // Ensure we don't overflow (max BC=65535 would be ~1.37M cycles)
+          const totalCycles = count > 0 ? Math.min((count - 1) * 21 + 16, 1400000) : 16;
+          // PC is already at the next instruction after ED xx fetch, don't advance it
+          return mkRes(totalCycles | 0, false, false);
         }
         // Default: one-iteration behavior
         // Read byte from (HL), write to (DE)
@@ -1842,7 +1825,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // EXX (11011001)
     if (op === 0xd9) {
-      let tb = s.b,
+      const tb = s.b,
         tc = s.c,
         td = s.d,
         te = s.e,
@@ -1954,7 +1937,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     // DAA (00100111)
     if (op === 0x27) {
       let a = s.a & 0xff;
-      let f = s.f;
+      const f = s.f;
       let adjust = 0;
       let carry = (f & FLAG_C) !== 0;
       if ((f & FLAG_N) === 0) {

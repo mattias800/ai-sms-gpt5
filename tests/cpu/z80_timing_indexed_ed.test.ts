@@ -98,7 +98,7 @@ describe('Z80 timing: ED and DD/FD indexed instructions', (): void => {
     mem.set([0xdd, 0x8e, 0x00, 0xdd, 0xbe, 0x05], 0x0000);
     const cpu = createZ80({ bus });
     // Seed IX and memory values
-    let st = cpu.getState();
+    const st = cpu.getState();
     cpu.setState({ ...st, ix: 0x4000, a: 0x10 });
     mem[0x4000] = 0x02; // (IX+0)
     mem[0x4005] = 0x20; // (IX+5)
@@ -115,7 +115,7 @@ describe('Z80 timing: ED and DD/FD indexed instructions', (): void => {
     // LD B,(IX+0) ; LD (IX+1),C
     mem.set([0xdd, 0x46, 0x00, 0xdd, 0x71, 0x01], 0x0000);
     const cpu = createZ80({ bus });
-    let st = cpu.getState();
+    const st = cpu.getState();
     cpu.setState({ ...st, ix: 0x2000, c: 0x55 });
     mem[0x2000] = 0xaa;
 

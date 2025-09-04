@@ -1,17 +1,18 @@
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
 import { readFileSync, writeFileSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import { SmsBus } from '../bus/bus.js';
-import type { Cartridge } from '../bus/bus.js';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { createMachine } from '../src/machine/machine.js';
+import { SmsBus } from '../src/bus/bus.js';
+import type { Cartridge } from '../src/bus/bus.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 async function main(): Promise<void> {
   const rom = new Uint8Array(readFileSync('./sonic.sms'));
   const cart: Cartridge = { rom };
-  
+
   let lastPC = 0;
   let step = 0;
   const traceLog: string[] = [];
-  
+
   const m = createMachine({
     cart,
     fastBlocks: true,
@@ -19,7 +20,7 @@ async function main(): Promise<void> {
       onTrace: (ev): void => {
         const pc = (ev.pcBefore ?? 0) & 0xffff;
         const bus = m.getBus();
-        
+
         // Get disassembly
         const bytes: number[] = [];
         for (let i = 0; i < 4; i++) {
@@ -27,10 +28,13 @@ async function main(): Promise<void> {
         }
         const readFn = (addr: number): number => bytes[addr - pc] ?? 0;
         const dis = disassembleOne(readFn, pc);
-        
-        const line = `${step.toString().padStart(6, '0')}: PC=${pc.toString(16).padStart(4, '0')} ${dis.text.padEnd(20)} ; bytes: ${bytes.slice(0, dis.length).map(b => b.toString(16).padStart(2, '0')).join(' ')}`;
+
+        const line = `${step.toString().padStart(6, '0')}: PC=${pc.toString(16).padStart(4, '0')} ${dis.text.padEnd(20)} ; bytes: ${bytes
+          .slice(0, dis.length)
+          .map((b: any) => b.toString(16).padStart(2, '0'))
+          .join(' ')}`;
         traceLog.push(line);
-        
+
         // Important transitions - look for when we first jump to 0x0284
         if (pc === 0x0284) {
           console.log(`\nSTEP ${step}: Entering loop at 0x0284`);
@@ -38,7 +42,7 @@ async function main(): Promise<void> {
           for (let i = Math.max(0, traceLog.length - 20); i < traceLog.length; i++) {
             console.log(traceLog[i]);
           }
-          
+
           // Show bank registers
           const bankRegs = (bus as any).bankRegs;
           if (bankRegs) {
@@ -47,7 +51,7 @@ async function main(): Promise<void> {
             console.log(`  Bank 1: 0x${bankRegs[1]?.toString(16).padStart(2, '0') ?? '??'}`);
             console.log(`  Bank 2: 0x${bankRegs[2]?.toString(16).padStart(2, '0') ?? '??'}`);
           }
-          
+
           // Show what the code looks like from 0x0280 to 0x02b5
           console.log('\nMemory from 0x0280 to 0x02b5:');
           for (let addr = 0x0280; addr <= 0x02b5; addr++) {
@@ -58,13 +62,13 @@ async function main(): Promise<void> {
             process.stdout.write(b.toString(16).padStart(2, '0') + ' ');
           }
           console.log('\n');
-          
+
           // Save full trace
           writeFileSync('trace.txt', traceLog.join('\n'));
           console.log('\nFull trace saved to trace.txt');
           process.exit(0);
         }
-        
+
         step++;
         lastPC = pc;
       },
@@ -77,7 +81,7 @@ async function main(): Promise<void> {
   const bus = m.getBus() as SmsBus;
   const origReadIO8 = bus.readIO8.bind(bus);
   let hcReads = 0;
-  
+
   bus.readIO8 = (port: number): number => {
     const p = port & 0xff;
     if (p === 0x7e) {
@@ -91,11 +95,11 @@ async function main(): Promise<void> {
   };
 
   const vdp = m.getVDP();
-  const st0 = vdp.getState ? vdp.getState() : undefined;
+  const st0 = vdp.getState ? vdp.getState?.() : undefined;
   const cyclesPerFrame = (st0?.cyclesPerLine ?? 228) * (st0?.linesPerFrame ?? 262);
-  
+
   console.log('Tracing initialization to find jump to 0x0284...');
-  
+
   // Run until we hit the bad loop
   for (let i = 0; i < 1000; i++) {
     m.runCycles(100);
@@ -107,7 +111,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+main().catch(e => {
   console.error(e);
   process.exit(1);
 });

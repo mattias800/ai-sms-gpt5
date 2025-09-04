@@ -1,7 +1,8 @@
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
 import { readFileSync, writeFileSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import { SmsBus } from '../bus/bus.js';
-import type { Cartridge } from '../bus/bus.js';
+import { createMachine } from '../src/machine/machine.js';
+import { SmsBus } from '../src/bus/bus.js';
+import type { Cartridge } from '../src/bus/bus.js';
 import zlib from 'zlib';
 
 // Simple SMS renderer: background tiles only (no sprites), no scroll, no flips.
@@ -22,7 +23,13 @@ function rgbFromCram(val: number): [number, number, number] {
   return [r, g, b];
 }
 
-function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], nameBase: number, patternBase: number, debugNoCram = false): Uint8Array {
+function renderFrame(
+  vram: Uint8Array | number[],
+  cram: Uint8Array | number[],
+  nameBase: number,
+  patternBase: number,
+  debugNoCram = false
+): Uint8Array {
   const v = vram instanceof Uint8Array ? vram : Uint8Array.from(vram);
   const c = cram instanceof Uint8Array ? cram : Uint8Array.from(cram);
   const out = new Uint8Array(WIDTH * HEIGHT * 3);
@@ -43,12 +50,15 @@ function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], n
         if (py >= HEIGHT) continue;
         for (let col = 0; col < 8; col++) {
           const bit = 7 - col;
-          const ci = ((b0 >>> bit) & 1) | (((b1 >>> bit) & 1) << 1) | (((b2 >>> bit) & 1) << 2) | (((b3 >>> bit) & 1) << 3);
+          const ci =
+            ((b0 >>> bit) & 1) | (((b1 >>> bit) & 1) << 1) | (((b2 >>> bit) & 1) << 2) | (((b3 >>> bit) & 1) << 3);
           const cramIdx = ci & 0x1f; // use first palette bank
           let r: number, g: number, b: number;
           if (debugNoCram) {
             const vshade = ci === 0 ? 0 : (ci * 16) & 0xff;
-            r = vshade; g = vshade; b = vshade;
+            r = vshade;
+            g = vshade;
+            b = vshade;
           } else {
             const cramVal = (c[cramIdx] ?? 0) & 0x3f;
             [r, g, b] = rgbFromCram(cramVal);
@@ -56,7 +66,9 @@ function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], n
           const px = tx * 8 + col;
           if (px >= WIDTH) continue;
           const off = (py * WIDTH + px) * 3;
-          out[off] = r; out[off + 1] = g; out[off + 2] = b;
+          out[off] = r;
+          out[off + 1] = g;
+          out[off + 2] = b;
         }
       }
     }
@@ -70,10 +82,10 @@ function crc32(buf: Uint8Array): number {
   for (let i = 0; i < buf.length; i++) {
     c ^= buf[i]!;
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     }
   }
-  return (~c) >>> 0;
+  return ~c >>> 0;
 }
 
 function writeChunk(type: string, data: Uint8Array): Uint8Array {
@@ -87,7 +99,10 @@ function writeChunk(type: string, data: Uint8Array): Uint8Array {
   out[7] = type.charCodeAt(3);
   out.set(data, 8);
   const crcBuf = new Uint8Array(4 + len);
-  crcBuf[0] = out[4]; crcBuf[1] = out[5]; crcBuf[2] = out[6]; crcBuf[3] = out[7];
+  crcBuf[0] = out[4];
+  crcBuf[1] = out[5];
+  crcBuf[2] = out[6];
+  crcBuf[3] = out[7];
   crcBuf.set(data, 4);
   const crc = crc32(crcBuf);
   dv.setUint32(8 + len, crc >>> 0, false);
@@ -101,8 +116,8 @@ function encodePNG(width: number, height: number, rgb: Uint8Array): Uint8Array {
   const dv = new DataView(ihdr.buffer);
   dv.setUint32(0, width >>> 0, false);
   dv.setUint32(4, height >>> 0, false);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 2;  // color type 2 (truecolor)
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // color type 2 (truecolor)
   ihdr[10] = 0; // compression
   ihdr[11] = 0; // filter
   ihdr[12] = 0; // interlace
@@ -146,14 +161,17 @@ function makeTilePlanes(rows: number[][]): number[] {
   const out: number[] = [];
   for (let y = 0; y < 8; y++) {
     const row = rows[y] ?? new Array(8).fill(0);
-    let b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+    let b0 = 0,
+      b1 = 0,
+      b2 = 0,
+      b3 = 0;
     for (let x = 0; x < 8; x++) {
       const bit = 7 - x;
       const ci = (row[x] ?? 0) & 0x0f;
-      if (ci & 1) b0 |= (1 << bit);
-      if (ci & 2) b1 |= (1 << bit);
-      if (ci & 4) b2 |= (1 << bit);
-      if (ci & 8) b3 |= (1 << bit);
+      if (ci & 1) b0 |= 1 << bit;
+      if (ci & 2) b1 |= 1 << bit;
+      if (ci & 4) b2 |= 1 << bit;
+      if (ci & 8) b3 |= 1 << bit;
     }
     out.push(b0 & 0xff, b1 & 0xff, b2 & 0xff, b3 & 0xff);
   }
@@ -178,7 +196,7 @@ function forceMinimalFrame(bus: SmsBus): void {
   const rows: number[][] = [];
   for (let y = 0; y < 8; y++) {
     const row: number[] = [];
-    for (let x = 0; x < 8; x++) row.push(((x ^ y) & 1) ? 0x0f : 0x00);
+    for (let x = 0; x < 8; x++) row.push((x ^ y) & 1 ? 0x0f : 0x00);
     rows.push(row);
   }
   const tile1 = makeTilePlanes(rows);
@@ -197,8 +215,24 @@ async function main(): Promise<void> {
   type Diag = {
     overrideUsed: boolean;
     overrideDisabled: boolean;
-    pre: { display: boolean; cramWrites: number; vramWrites: number; nonZeroVRAM: number; nonZeroVramWrites: number; lastNonZeroVramAddr: number; reg1: number };
-    post: { display: boolean; cramWrites: number; vramWrites: number; nonZeroVRAM: number; nonZeroVramWrites: number; lastNonZeroVramAddr: number; reg1: number };
+    pre: {
+      display: boolean;
+      cramWrites: number;
+      vramWrites: number;
+      nonZeroVRAM: number;
+      nonZeroVramWrites: number;
+      lastNonZeroVramAddr: number;
+      reg1: number;
+    };
+    post: {
+      display: boolean;
+      cramWrites: number;
+      vramWrites: number;
+      nonZeroVRAM: number;
+      nonZeroVramWrites: number;
+      lastNonZeroVramAddr: number;
+      reg1: number;
+    };
     pngSource: 'game' | 'fallback';
     pngNonZeroRGB: number;
   };
@@ -206,7 +240,7 @@ async function main(): Promise<void> {
   const outPath = process.argv[3] ?? 'sonic_frame.png';
   const seconds = Number(process.argv[4] ?? '3');
   const until = (process.argv[5] ?? 'either').toLowerCase(); // 'display' | 'cram' | 'either' | 'none'
-  const noWait = ((process.argv[6] ?? '').toLowerCase() === 'nowait');
+  const noWait = (process.argv[6] ?? '').toLowerCase() === 'nowait';
 
   const rom = new Uint8Array(readFileSync(romPath));
   const cart: Cartridge = { rom };
@@ -214,15 +248,15 @@ async function main(): Promise<void> {
   let irqCount = 0;
   let nmiCount = 0;
   // Parse --no-fastblocks flag
-  const noFastBlocks = ((process.argv[10] ?? '').toLowerCase() === 'no-fastblocks');
-  
+  const noFastBlocks = (process.argv[10] ?? '').toLowerCase() === 'no-fastblocks';
+
   const m = createMachine({
     cart,
     wait: noWait ? undefined : { smsModel: true, includeWaitInCycles: false, vdpPenalty: 4 },
     bus: { allowCartRam: false },
     fastBlocks: !noFastBlocks, // Enable by default for performance
     trace: {
-      onTrace: (ev): void => { 
+      onTrace: (ev): void => {
         lastPC = (ev.pcBefore ?? 0) & 0xffff;
         if (ev.irqAccepted) irqCount++;
         if (ev.nmiAccepted) nmiCount++;
@@ -233,22 +267,23 @@ async function main(): Promise<void> {
   });
 
   // Optional: force-enable CPU interrupts early (experimental), to see if VBlank IRQ handler runs
-  const forceEI = ((process.argv[7] ?? '').toLowerCase() === 'forceei');
-  const noHC = ((process.argv[8] ?? '').toLowerCase() === 'nohc');
+  const forceEI = (process.argv[7] ?? '').toLowerCase() === 'forceei';
+  const noHC = (process.argv[8] ?? '').toLowerCase() === 'nohc';
   if (forceEI) {
     const cpu = m.getCPU();
     const cs = cpu.getState();
-    cs.iff1 = true; cs.iff2 = true; // enable maskable interrupts
+    cs.iff1 = true;
+    cs.iff2 = true; // enable maskable interrupts
     // Keep IM=1 (reset default); many SMS titles use RST 38h handler in IM 1
     cs.im = 1;
     cpu.setState(cs);
   }
 
-  // Force-pass HCounter gate precisely for the two observed loops; disable once game progresses  
+  // Force-pass HCounter gate precisely for the two observed loops; disable once game progresses
   const bus1 = m.getBus() as SmsBus;
   const __origReadIO8 = bus1.readIO8.bind(bus1);
   let hcReadCount = 0; // Track HC reads
-  let hcSequence = [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xb0, 0xb0, 0xb0, 0x00, 0x01, 0x02, 0x03, 0x04];
+  const hcSequence = [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xb0, 0xb0, 0xb0, 0x00, 0x01, 0x02, 0x03, 0x04];
   bus1.readIO8 = (port: number): number => {
     const p = port & 0xff;
     if (!noHC && p === 0x7e) {
@@ -264,7 +299,7 @@ async function main(): Promise<void> {
       return __origReadIO8(p);
     }
     if (p === 0x7f) {
-      const stl = vdp.getState ? vdp.getState() : undefined;
+      const stl = vdp.getState ? vdp.getState?.() : undefined;
       const line = stl?.line ?? 0;
       const vblankStart = 192;
       if (line >= vblankStart) return (0xc0 + (line - vblankStart)) & 0xff;
@@ -275,7 +310,7 @@ async function main(): Promise<void> {
 
   // Run for up to N frames (~60Hz). Use timing from VDP state.
   const vdp = m.getVDP();
-  const st0 = vdp.getState ? vdp.getState() : undefined;
+  const st0 = vdp.getState ? vdp.getState?.() : undefined;
   const baseCpf = (st0?.cyclesPerLine ?? 228) * (st0?.linesPerFrame ?? 262);
   const frameMul = Math.max(1, Number(process.argv[9] ?? '100'));
   const cyclesPerFrame = baseCpf * frameMul;
@@ -286,7 +321,7 @@ async function main(): Promise<void> {
     m.runCycles(cyclesPerFrame);
     framesRan++;
     if (!vdp.getState) continue;
-    const cur = vdp.getState();
+    const cur = vdp?.getState?.() ?? {};
     if (!cur) continue;
     if (until === 'none') continue;
     const displayOn = !!cur.displayEnabled;
@@ -300,7 +335,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const st = vdp.getState ? vdp.getState()! : undefined;
+  const st = vdp.getState ? vdp.getState?.()! : undefined;
   if (!st || !st.vram || !st.cram) {
     throw new Error('VDP state does not expose VRAM/CRAM');
   }
@@ -312,7 +347,7 @@ async function main(): Promise<void> {
 
   const overrideDisabledNow = false;
 
-  const st2 = vdp.getState ? vdp.getState()! : st;
+  const st2 = vdp.getState ? vdp.getState?.()! : st;
   const vramU8b = Uint8Array.from(st2.vram);
   nonZeroVRAM = 0;
   for (let i = 0; i < vramU8b.length; i++) if (vramU8b[i] !== 0) nonZeroVRAM++;
@@ -332,7 +367,7 @@ async function main(): Promise<void> {
   if (!st2.displayEnabled && ((st2.regs[1] ?? 0) & 0x20) !== 0) {
     const r1 = (st2.regs[1] ?? 0) & 0xff;
     vdpSetReg(bus2, 1, (r1 | 0x40) & 0xff);
-    stX = vdp.getState ? vdp.getState()! : st2;
+    stX = vdp.getState ? vdp.getState?.()! : st2;
   }
   const beforeFallbackNonZero = nonZeroVRAM;
   let fallbackUsed = false;
@@ -340,7 +375,7 @@ async function main(): Promise<void> {
   if (nonZeroVRAM < 512) {
     forceMinimalFrame(bus2);
     fallbackUsed = true;
-    stX = vdp.getState ? vdp.getState()! : st2;
+    stX = vdp.getState ? vdp.getState?.()! : st2;
     const vramU8c = Uint8Array.from(stX.vram);
     nonZeroVRAM = 0;
     for (let i = 0; i < vramU8c.length; i++) if (vramU8c[i] !== 0) nonZeroVRAM++;
@@ -360,7 +395,13 @@ async function main(): Promise<void> {
 
   // Render a frame from VRAM (fallback to debug palette if CRAM is still blank)
   const debugNoCram = stX.cramWrites === 0;
-  const rgb = renderFrame(Uint8Array.from(stX.vram), Uint8Array.from(stX.cram), stX.nameTableBase & 0x3fff, stX.bgPatternBase & 0x3fff, debugNoCram);
+  const rgb = renderFrame(
+    Uint8Array.from(stX.vram),
+    Uint8Array.from(stX.cram),
+    stX.nameTableBase & 0x3fff,
+    stX.bgPatternBase & 0x3fff,
+    debugNoCram
+  );
   let pngNonZero = 0;
   for (let i = 0; i < rgb.length; i++) if (rgb[i] !== 0) pngNonZero++;
   const png = encodePNG(WIDTH, HEIGHT, rgb);
@@ -371,7 +412,7 @@ async function main(): Promise<void> {
     overrideDisabled: overrideDisabledNow,
     pre: preDiag,
     post: postDiag,
-    pngSource: (beforeFallbackNonZero >= 512 || st2.cramWrites > 0 || st2.displayEnabled) ? 'game' : 'fallback',
+    pngSource: beforeFallbackNonZero >= 512 || st2.cramWrites > 0 || st2.displayEnabled ? 'game' : 'fallback',
     pngNonZeroRGB: pngNonZero,
   };
   // Attach last PC for debugging
@@ -386,7 +427,8 @@ async function main(): Promise<void> {
     cramWrites: stX.cramWrites,
     nonZeroVRAM,
     nonZeroVramWrites: stX.nonZeroVramWrites ?? 0,
-    lastNonZeroVramAddr: stX.lastNonZeroVramAddr !== undefined ? `0x${stX.lastNonZeroVramAddr.toString(16).padStart(4, '0')}` : 'none',
+    lastNonZeroVramAddr:
+      stX.lastNonZeroVramAddr !== undefined ? `0x${stX.lastNonZeroVramAddr.toString(16).padStart(4, '0')}` : 'none',
     vdpDataWrites: vdpWrites.data,
     vdpCtrlWrites: vdpWrites.control,
     hCounterReads: hstats.total,
@@ -405,12 +447,13 @@ async function main(): Promise<void> {
   });
 
   // eslint-disable-next-line no-console
-  console.log(`Wrote ${outPath} (${WIDTH}x${HEIGHT}) after ${framesRan} frames (mode=${until}, cap=${seconds}s). Diag: ${outPath}.json`);
+  console.log(
+    `Wrote ${outPath} (${WIDTH}x${HEIGHT}) after ${framesRan} frames (mode=${until}, cap=${seconds}s). Diag: ${outPath}.json`
+  );
 }
 
-main().catch((e) => {
+main().catch(e => {
   // eslint-disable-next-line no-console
   console.error(e);
   process.exit(1);
 });
-

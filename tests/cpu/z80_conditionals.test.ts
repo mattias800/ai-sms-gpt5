@@ -34,7 +34,7 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     bus.getMemory().set([0xc8], 0x0000); // RET Z
     const cpu = createZ80({ bus });
     // Prepare stack with return address 0x1234
-    let s = cpu.getState();
+    const s = cpu.getState();
     const mem = bus.getMemory();
     mem[0x8000] = 0x34;
     mem[0x8001] = 0x12;
@@ -45,7 +45,7 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
 
     // Not taken path
     cpu.reset();
-    let s2 = cpu.getState();
+    const s2 = cpu.getState();
     bus.getMemory().set([0xc8], 0x0000);
     cpu.setState({ ...s2, sp: 0x8000, f: s2.f & ~FLAG_Z });
     c = step(cpu);
@@ -58,11 +58,11 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     bus.getMemory().set([0xdc, 0x00, 0x40], 0x0000); // CALL C,0x4000
     const cpu = createZ80({ bus });
     // Taken when C=1
-    let s = cpu.getState();
+    const s = cpu.getState();
     cpu.setState({ ...s, f: s.f | FLAG_C, sp: 0x9000 });
     let c = step(cpu);
     expect(c).toBe(17);
-    let st = cpu.getState();
+    const st = cpu.getState();
     expect(st.pc).toBe(0x4000);
     // Return address pushed at 0x8ffe/0x8fff
     expect(bus.getMemory()[0x8fff]).toBe(0x00);
@@ -83,7 +83,7 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     bus.getMemory().set([0xf2, 0x34, 0x12], 0x0000); // JP P,0x1234
     const cpu = createZ80({ bus });
     // P (S=0) => taken
-    let s = cpu.getState();
+    const s = cpu.getState();
     cpu.setState({ ...s, f: s.f & ~FLAG_S });
     let c = step(cpu);
     expect(c).toBe(10);
@@ -92,7 +92,7 @@ describe('Z80 conditional JR/RET/CALL/JP paths', (): void => {
     // Not taken when S=1 (M)
     cpu.reset();
     bus.getMemory().set([0xf2, 0x34, 0x12], 0x0000);
-    let s2 = cpu.getState();
+    const s2 = cpu.getState();
     cpu.setState({ ...s2, f: s2.f | FLAG_S });
     c = step(cpu);
     expect(c).toBe(10);

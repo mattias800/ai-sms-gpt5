@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import type { Cartridge } from '../bus/bus.js';
+import { createMachine } from '../src/machine/machine.js';
+import type { Cartridge } from '../src/bus/bus.js';
 import * as zlib from 'zlib';
 
 // Simple SMS renderer: background tiles only (no sprites), no scroll, no flips.
@@ -11,19 +11,26 @@ const TILES_Y = 24;
 
 function rgbFromCram(val: number): [number, number, number] {
   // SMS uses 6-bit color: --BBGGRR
-  const r = (val & 0x03) * 85;  // Bits 0-1
-  const g = ((val >> 2) & 0x03) * 85;  // Bits 2-3
-  const b = ((val >> 4) & 0x03) * 85;  // Bits 4-5
+  const r = (val & 0x03) * 85; // Bits 0-1
+  const g = ((val >> 2) & 0x03) * 85; // Bits 2-3
+  const b = ((val >> 4) & 0x03) * 85; // Bits 4-5
   return [r, g, b];
 }
 
-function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], nameBase: number, patternBase: number, debugNoCram = false): Uint8Array {
+function renderFrame(
+  vram: Uint8Array | number[],
+  cram: Uint8Array | number[],
+  nameBase: number,
+  patternBase: number,
+  debugNoCram = false
+): Uint8Array {
   const v = vram instanceof Uint8Array ? vram : Uint8Array.from(vram);
   const c = cram instanceof Uint8Array ? cram : Uint8Array.from(cram);
   const out = new Uint8Array(WIDTH * HEIGHT * 3);
 
   // Debug: Show entire name table including off-screen area
-  for (let ty = 0; ty < 28; ty++) { // Show 28 rows to see more
+  for (let ty = 0; ty < 28; ty++) {
+    // Show 28 rows to see more
     for (let tx = 0; tx < TILES_X; tx++) {
       if (ty >= TILES_Y) continue; // Skip rows beyond screen height
       const entryAddr = (nameBase + ((ty * 32 + tx) << 1)) & 0x3fff;
@@ -41,12 +48,15 @@ function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], n
         if (py >= HEIGHT) continue;
         for (let col = 0; col < 8; col++) {
           const bit = 7 - col;
-          const ci = ((b0 >>> bit) & 1) | (((b1 >>> bit) & 1) << 1) | (((b2 >>> bit) & 1) << 2) | (((b3 >>> bit) & 1) << 3);
+          const ci =
+            ((b0 >>> bit) & 1) | (((b1 >>> bit) & 1) << 1) | (((b2 >>> bit) & 1) << 2) | (((b3 >>> bit) & 1) << 3);
           const cramIdx = ci & 0x1f;
           let r: number, g: number, b: number;
           if (debugNoCram) {
             const vshade = ci === 0 ? 0 : (ci * 16) & 0xff;
-            r = vshade; g = vshade; b = vshade;
+            r = vshade;
+            g = vshade;
+            b = vshade;
           } else {
             const cramVal = (c[cramIdx] ?? 0) & 0x3f;
             [r, g, b] = rgbFromCram(cramVal);
@@ -54,7 +64,9 @@ function renderFrame(vram: Uint8Array | number[], cram: Uint8Array | number[], n
           const px = tx * 8 + col;
           if (px >= WIDTH) continue;
           const off = (py * WIDTH + px) * 3;
-          out[off] = r; out[off + 1] = g; out[off + 2] = b;
+          out[off] = r;
+          out[off + 1] = g;
+          out[off + 2] = b;
         }
       }
     }
@@ -68,10 +80,10 @@ function crc32(buf: Uint8Array): number {
   for (let i = 0; i < buf.length; i++) {
     c ^= buf[i]!;
     for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     }
   }
-  return (~c) >>> 0;
+  return ~c >>> 0;
 }
 
 function writeChunk(type: string, data: Uint8Array): Uint8Array {
@@ -85,7 +97,10 @@ function writeChunk(type: string, data: Uint8Array): Uint8Array {
   out[7] = type.charCodeAt(3);
   out.set(data, 8);
   const crcBuf = new Uint8Array(4 + len);
-  crcBuf[0] = out[4]; crcBuf[1] = out[5]; crcBuf[2] = out[6]; crcBuf[3] = out[7];
+  crcBuf[0] = out[4];
+  crcBuf[1] = out[5];
+  crcBuf[2] = out[6];
+  crcBuf[3] = out[7];
   crcBuf.set(data, 4);
   const crc = crc32(crcBuf);
   dv.setUint32(8 + len, crc >>> 0, false);
@@ -98,8 +113,8 @@ function encodePNG(width: number, height: number, rgb: Uint8Array): Uint8Array {
   const dv = new DataView(ihdr.buffer);
   dv.setUint32(0, width >>> 0, false);
   dv.setUint32(4, height >>> 0, false);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 2;  // color type 2 (truecolor)
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // color type 2 (truecolor)
   ihdr[10] = 0; // compression
   ihdr[11] = 0; // filter
   ihdr[12] = 0; // interlace
@@ -138,11 +153,11 @@ console.log(`ROM size: ${rom.length} bytes (${rom.length / 1024}KB)`);
 
 // Check header
 console.log('\nROM Header at 0x7FF0:');
-const header = rom.subarray(0x7FF0, 0x8000);
+const header = rom.subarray(0x7ff0, 0x8000);
 let headerStr = '';
 for (let i = 0; i < 16; i++) {
   const c = header[i]!;
-  headerStr += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.';
+  headerStr += c >= 32 && c < 127 ? String.fromCharCode(c) : '.';
 }
 console.log('Text:', headerStr);
 
@@ -155,17 +170,17 @@ const cyclesPerFrame = 59736;
 
 for (let frame = 0; frame < 420; frame++) {
   m.runCycles(cyclesPerFrame);
-  
+
   // Just run without checking
-  
+
   if (frame % 60 === 0) {
     const vdp = m.getVDP();
-    const vdpState = vdp.getState ? vdp.getState() : undefined;
+    const vdpState = vdp.getState ? vdp.getState?.() : undefined;
     const cpu = m.getCPU();
     const cpuState = cpu.getState();
-    const status = vdpState ? 
-      `Display=${vdpState.displayEnabled}, VRAM writes=${vdpState.vramWrites}, CRAM writes=${vdpState.cramWrites}` : 
-      'No VDP state';
+    const status = vdpState
+      ? `Display=${vdpState.displayEnabled}, VRAM writes=${vdpState.vramWrites}, CRAM writes=${vdpState.cramWrites}`
+      : 'No VDP state';
     console.log(`Frame ${frame}: PC=0x${cpuState.pc.toString(16).padStart(4, '0')}, ${status}`);
   }
 }
@@ -177,11 +192,11 @@ const cpu = m.getCPU();
 const vdp = m.getVDP();
 const bus = m.getBus();
 const cpuState = cpu.getState();
-const vdpState = vdp.getState ? vdp.getState() : undefined;
+const vdpState = vdp.getState ? vdp.getState?.() : undefined;
 const stats = bus.getVDPWriteStats();
 
 // Generate PNG
-const nameBase = vdpState ? (((vdpState.regs[2] ?? 0) & 0x0e) << 10) : 0x3800;
+const nameBase = vdpState ? ((vdpState.regs?.[2] ?? 0 ?? 0 ?? 0) & 0x0e) << 10 : 0x3800;
 // Alex Kidd stores patterns at 0x0000 regardless of R4 setting
 const patternBase = 0x0000;
 console.log(`Name table base: 0x${nameBase.toString(16)}, Pattern base: 0x${patternBase.toString(16)}`);
@@ -198,24 +213,26 @@ const png = encodePNG(WIDTH, HEIGHT, rgb);
 writeFileSync('alex_kidd_frame.png', png);
 
 // Create diagnostic JSON
-const displayEnabled = vdpState ? ((vdpState.regs[1] ?? 0) & 0x40) !== 0 : false;
+const displayEnabled = vdpState ? ((vdpState.regs?.[1] ?? 0 ?? 0 ?? 0) & 0x40) !== 0 : false;
 const vramWrites = vdpState?.vramWrites ?? 0;
 const diag = {
   displayEnabled,
-  vblankIrqEnabled: vdpState ? ((vdpState.regs[1] ?? 0) & 0x20) !== 0 : false,
+  vblankIrqEnabled: vdpState ? ((vdpState.regs?.[1] ?? 0 ?? 0 ?? 0) & 0x20) !== 0 : false,
   vramWrites,
   cramWrites: vdpState?.cramWrites ?? 0,
-  nonZeroVRAM: vdpState?.vram.filter(b => b !== 0).length ?? 0,
+  nonZeroVRAM: vdpState?.vram.filter((b: any) => b !== 0).length ?? 0,
   nonZeroVramWrites: vdpState?.nonZeroVramWrites ?? 0,
-  lastNonZeroVramAddr: vdpState?.lastNonZeroVramAddr !== undefined ? 
-    `0x${vdpState.lastNonZeroVramAddr.toString(16).padStart(4, '0')}` : 'none',
+  lastNonZeroVramAddr:
+    vdpState?.lastNonZeroVramAddr !== undefined
+      ? `0x${vdpState.lastNonZeroVramAddr.toString(16).padStart(4, '0')}`
+      : 'none',
   vdpDataWrites: stats.data,
   vdpCtrlWrites: stats.control,
   regs: vdpState?.regs.slice(0, 16) ?? [],
-  nameTableBase: vdpState ? (((vdpState.regs[2] ?? 0) & 0x0e) << 10).toString(16) : '0',
-  bgPatternBase: vdpState ? (((vdpState.regs[4] ?? 0) & 0x07) << 11).toString(16) : '0',
+  nameTableBase: vdpState ? (((vdpState.regs?.[2] ?? 0 ?? 0 ?? 0) & 0x0e) << 10).toString(16) : '0',
+  bgPatternBase: vdpState ? (((vdpState.regs?.[4] ?? 0 ?? 0 ?? 0) & 0x07) << 11).toString(16) : '0',
   pngNonZeroRGB: pngNonZero,
-  pngSource: (displayEnabled && vramWrites > 1000) ? 'game' : 'fallback',
+  pngSource: displayEnabled && vramWrites > 1000 ? 'game' : 'fallback',
   lastPC: cpuState.pc.toString(16),
 };
 

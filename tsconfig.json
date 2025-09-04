@@ -12,10 +12,11 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
+    "noEmit": true,
     "rootDir": ".",
     "sourceMap": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "tests", "scripts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "tests", "scripts", "tools"],
+  "exclude": ["node_modules", "dist", "dist-web", "src/web/**/*"]
 }

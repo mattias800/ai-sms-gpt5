@@ -1,20 +1,20 @@
 import { readFileSync } from 'fs';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 const rom = readFileSync('./sonic.sms');
-const readFn = (addr: number): number => rom[addr] ?? 0;
+const readFn = (addr: number): number => rom[addr] ?? 0 ?? 0;
 
 console.log('=== Full initialization sequence analysis ===\n');
 
 // Disassemble the full sequence from 0x028B
 console.log('Complete disassembly from 0x028B:');
-let pc = 0x028B;
-const endAddr = 0x02C0;
+let pc = 0x028b;
+const endAddr = 0x02c0;
 while (pc < endAddr) {
   const dis = disassembleOne(readFn, pc);
   const bytes = [];
   for (let i = 0; i < dis.length; i++) {
-    bytes.push(rom[pc + i]!.toString(16).padStart(2, '0'));
+    bytes.push((rom[pc + i] ?? 0)!.toString(16).padStart(2, '0'));
   }
   console.log(`0x${pc.toString(16).padStart(4, '0')}: ${dis.text.padEnd(20)} ; ${bytes.join(' ')}`);
   pc += dis.length;
@@ -32,16 +32,16 @@ console.log('This looks like setup for another copy operation!');
 
 // Check what follows
 console.log('\nWhat comes after 0x02B4?');
-pc = 0x02B4;
+pc = 0x02b4;
 for (let i = 0; i < 10; i++) {
   const dis = disassembleOne(readFn, pc);
   const bytes = [];
   for (let j = 0; j < dis.length; j++) {
-    bytes.push(rom[pc + j]!.toString(16).padStart(2, '0'));
+    bytes.push((rom[pc + j] ?? 0)!.toString(16).padStart(2, '0'));
   }
   console.log(`0x${pc.toString(16).padStart(4, '0')}: ${dis.text.padEnd(20)} ; ${bytes.join(' ')}`);
   pc += dis.length;
-  if (pc > 0x02C5) break;
+  if (pc > 0x02c5) break;
 }
 
 console.log('\n=== OTIR Instruction ===');
@@ -51,7 +51,7 @@ console.log('');
 console.log('What are the 11 bytes at 0x0311?');
 process.stdout.write('Data: ');
 for (let i = 0; i < 11; i++) {
-  process.stdout.write(rom[0x0311 + i]!.toString(16).padStart(2, '0') + ' ');
+  process.stdout.write((rom[0x0311 + i] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
 
@@ -68,4 +68,4 @@ console.log('This could be code or configuration data.');
 // Let's see what's at the jump target after this
 console.log('\n=== After OTIR ===');
 console.log('After OTIR, the JR -46 jumps back to 0x0284');
-console.log('Perhaps the OTIR to port 0x8B changes what\'s mapped there?');
+console.log("Perhaps the OTIR to port 0x8B changes what's mapped there?");

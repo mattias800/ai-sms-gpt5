@@ -1,5 +1,6 @@
 import { IVDP } from '../vdp/vdp.js';
 import { type IPSG } from '../psg/sn76489.js';
+import { IController } from '../io/controller.js';
 
 export interface IBus {
   read8: (addr: number) => number;
@@ -65,16 +66,21 @@ export class SegaMapper implements IMapper {
     const v = val & 0xff;
     // 0xfffc-0xffff control registers
     if (a === 0xfffc) {
+      // 0xFFFC is RAM control register
       // Bit 3 (0x08) = RAM enable for slot 0
+      // Bit 4 (0x10) = RAM enable for slot 2 (cartridge RAM)
+      // Bit 2 (0x04) = BIOS disable
       this.ramInSlot0 = (v & 0x08) !== 0;
-      // Bank select uses full byte value (masked by number of banks)
-      this.bank0 = v % this.banks.length;
+      // 0xFFFC does NOT control bank switching
     } else if (a === 0xfffd) {
-      this.bank1 = v % this.banks.length;
+      // 0xFFFD controls bank at slot 0 (0x0000-0x3FFF)
+      this.bank0 = v % this.banks.length;
     } else if (a === 0xfffe) {
-      this.bank2 = v % this.banks.length;
+      // 0xFFFE controls bank at slot 1 (0x4000-0x7FFF)
+      this.bank1 = v % this.banks.length;
     } else if (a === 0xffff) {
-      // SRAM control (ignored in this stub)
+      // 0xFFFF controls bank at slot 2 (0x8000-0xBFFF)
+      this.bank2 = v % this.banks.length;
     }
   };
 
@@ -104,6 +110,8 @@ export class SmsBus implements IBus {
   private readonly mapper: IMapper;
   private readonly vdp: IVDP | null;
   private readonly psg: IPSG | null;
+  private readonly controller1: IController | null;
+  private readonly controller2: IController | null;
   private readonly allowCartRam: boolean;
   private lastPSG: number = 0;
   private ioControl: number = 0xff; // port 0x3F (direction/control), last write
@@ -125,7 +133,14 @@ export class SmsBus implements IBus {
   private vdpDataWrites: number = 0; // 0xBE
   private vdpCtrlWrites: number = 0; // 0xBF
 
-  constructor(cart: Cartridge, vdp?: IVDP | null, psg?: IPSG | null, opts?: BusOptions | null) {
+  constructor(
+    cart: Cartridge,
+    vdp?: IVDP | null,
+    psg?: IPSG | null,
+    controller1?: IController | null,
+    controller2?: IController | null,
+    opts?: BusOptions | null
+  ) {
     this.mapper = new SegaMapper(cart.rom);
     // Pass WRAM reference to mapper for RAM mirroring
     if (this.mapper.setWramRef) {
@@ -133,6 +148,8 @@ export class SmsBus implements IBus {
     }
     this.vdp = vdp ?? null;
     this.psg = psg ?? null;
+    this.controller1 = controller1 ?? null;
+    this.controller2 = controller2 ?? null;
     this.allowCartRam = opts?.allowCartRam ?? true;
   }
 
@@ -192,11 +209,14 @@ export class SmsBus implements IBus {
 
     // Controller ports 0xDC/0xDD (active-low): default 0xFF (no buttons pressed)
     if (p === 0xdc || p === 0xdd) {
-      // Base value: all inputs pulled high (no buttons pressed; active-low)
-      let val = 0xff;
+      // Get controller state from the controller interface
+      const controller = p === 0xdc ? this.controller1 : this.controller2;
+      let val = controller ? controller.readPort() : 0xff;
+
       // Drive lower 6 lines according to direction/output latch (conservative model)
       const lowerMask = this.ioDirMask & 0x3f;
       val = (val & ~lowerMask) | (this.ioOutLatch & lowerMask);
+
       // TH lines (bit 6) are driven from 0x3F upper bits; treat them as outputs for handshake
       if (p === 0xdc) {
         // Port A TH on bit 6
@@ -286,6 +306,18 @@ export class SmsBus implements IBus {
   public __setIOMaskForTest = (dirMask: number, outLatch: number): void => {
     this.ioDirMask = dirMask & 0xff;
     this.ioOutLatch = outLatch & 0xff;
+  };
+
+  // ROM bank getters for debugging
+  public getROMBank = (slot: number): number => {
+    if (this.mapper instanceof SegaMapper) {
+      // Access private fields via any cast (for debugging only)
+      const m = this.mapper as any;
+      if (slot === 0) return m.bank0 ?? 0;
+      if (slot === 1) return m.bank1 ?? 1;
+      if (slot === 2) return m.bank2 ?? 2;
+    }
+    return 0;
   };
 }
 

@@ -31,14 +31,14 @@ describe('SMS Bus memory map and SegaMapper', (): void => {
     expect(bus.read8(0x0000)).toBe(0); // bank0
     expect(bus.read8(0x4000)).toBe(1); // bank1
     expect(bus.read8(0x8000)).toBe(2); // bank2
-    // Switch bank2 to 5
-    bus.write8(0xfffe, 5);
+    // Switch slot 2 (0x8000-0xBFFF) to bank 5
+    bus.write8(0xffff, 5);
     expect(bus.read8(0x8000)).toBe(5);
-    // Switch bank1 to 6
-    bus.write8(0xfffd, 6);
+    // Switch slot 1 (0x4000-0x7FFF) to bank 6
+    bus.write8(0xfffe, 6);
     expect(bus.read8(0x4000)).toBe(6);
-    // Switch bank0 to 7 (note: first 1KB at 0x0000-0x03FF is always from ROM bank 0)
-    bus.write8(0xfffc, 7);
+    // Switch slot 0 (0x0000-0x3FFF) to bank 7 (note: first 1KB at 0x0000-0x03FF is always from ROM bank 0)
+    bus.write8(0xfffd, 7);
     expect(bus.read8(0x0400)).toBe(7); // Check at 0x0400 where bank switching takes effect
   });
 

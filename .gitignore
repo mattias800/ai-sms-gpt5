@@ -7,6 +7,7 @@ dist/
 build/
 out/
 coverage/
+visual_output/
 *.js
 *.js.map
 !vitest.config.ts

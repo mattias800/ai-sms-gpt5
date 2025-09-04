@@ -1,10 +1,17 @@
-import { createMachine } from '../machine/machine.js';
-import type { Cartridge } from '../bus/bus.js';
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
+import { createMachine } from '../src/machine/machine.js';
+import type { Cartridge } from '../src/bus/bus.js';
 import { readFileSync } from 'fs';
 
 interface BlockIOCounts {
-  INI: number; IND: number; INIR: number; INDR: number;
-  OUTI: number; OUTD: number; OTIR: number; OTDR: number;
+  INI: number;
+  IND: number;
+  INIR: number;
+  INDR: number;
+  OUTI: number;
+  OUTD: number;
+  OTIR: number;
+  OTDR: number;
 }
 
 interface ProbeResult {
@@ -37,15 +44,24 @@ interface ProbeResult {
 
 const isBlockIO = (ed2: number): keyof BlockIOCounts | null => {
   switch (ed2 & 0xff) {
-    case 0xa2: return 'INI';
-    case 0xaa: return 'IND';
-    case 0xb2: return 'INIR';
-    case 0xba: return 'INDR';
-    case 0xa3: return 'OUTI';
-    case 0xab: return 'OUTD';
-    case 0xb3: return 'OTIR';
-    case 0xbb: return 'OTDR';
-    default: return null;
+    case 0xa2:
+      return 'INI';
+    case 0xaa:
+      return 'IND';
+    case 0xb2:
+      return 'INIR';
+    case 0xba:
+      return 'INDR';
+    case 0xa3:
+      return 'OUTI';
+    case 0xab:
+      return 'OUTD';
+    case 0xb3:
+      return 'OTIR';
+    case 0xbb:
+      return 'OTDR';
+    default:
+      return null;
   }
 };
 
@@ -60,7 +76,7 @@ async function main(): Promise<void> {
     sawEI: false,
     // firstEIPC set later when seen
     imSet: [],
-    blockIO: { INI:0, IND:0, INIR:0, INDR:0, OUTI:0, OUTD:0, OTIR:0, OTDR:0 },
+    blockIO: { INI: 0, IND: 0, INIR: 0, INDR: 0, OUTI: 0, OUTD: 0, OTIR: 0, OTDR: 0 },
     blockIOFlags: { N: 0, H: 0, C: 0, PV: 0 },
     cramWrites: 0,
     hInImm: 0,
@@ -149,11 +165,11 @@ async function main(): Promise<void> {
       }
     }
     // IN r,(C) group: ED 40/48/50/58/60/68/70/78
-    if (bb[0] === 0xed && (bb.length >= 2)) {
-      const sub = ((bb[1] as number) & 0xff);
+    if (bb[0] === 0xed && bb.length >= 2) {
+      const sub = (bb[1] as number) & 0xff;
       if ((sub & 0xc7) === 0x40) {
         const cVal = ev.regs?.c ?? 0xff;
-        const cp = (cVal & 0xff);
+        const cp = cVal & 0xff;
         const ck = `0x${cp.toString(16)}`;
         probe.inCByPort[ck] = (probe.inCByPort[ck] ?? 0) + 1;
         if (cp === 0x7e) {
@@ -174,9 +190,9 @@ async function main(): Promise<void> {
     // If we see JR NZ,d right after IN, compute expected branch and check next pc
     if (bb[0] === 0x20 && bb.length >= 2) {
       const b1 = bb[1] as number;
-      const d = ((b1 & 0x80) ? (b1 - 0x100) : b1) | 0;
-      const fallThrough = ((ev.pcBefore + 2) & 0xffff);
-      const takenTarget = ((ev.pcBefore + 2 + d) & 0xffff);
+      const d = (b1 & 0x80 ? b1 - 0x100 : b1) | 0;
+      const fallThrough = (ev.pcBefore + 2) & 0xffff;
+      const takenTarget = (ev.pcBefore + 2 + d) & 0xffff;
       const f = ev.regs?.f ?? 0;
       const z = (f & 0x40) !== 0;
       const expectTaken = !z; // JR NZ taken when Z==0
@@ -187,7 +203,11 @@ async function main(): Promise<void> {
     if (captureCount > 0) {
       captureCount--;
       if (currentSample) {
-        currentSample.seq.push({ pc: `0x${(ev.pcBefore & 0xffff).toString(16)}`, text: ev.text ?? '', bytes: (bb.slice(0, Math.min(bb.length, 4))) });
+        currentSample.seq.push({
+          pc: `0x${(ev.pcBefore & 0xffff).toString(16)}`,
+          text: ev.text ?? '',
+          bytes: bb.slice(0, Math.min(bb.length, 4)),
+        });
       }
       if (bb[0] === 0xfe) {
         // Prefer immediate from trace bytes if present; otherwise peek ROM at pc+1
@@ -195,7 +215,7 @@ async function main(): Promise<void> {
         if (bb.length >= 2) imm = (bb[1] as number) & 0xff;
         else {
           const pc1 = (((ev.pcBefore as number) ?? 0) + 1) & 0xffff;
-          imm = (rom[pc1] ?? 0) & 0xff;
+          imm = (rom[pc1] ?? 0 ?? 0) & 0xff;
         }
         const k = `0x${(imm & 0xff).toString(16)}`;
         probe.cpAfterH[k] = (probe.cpAfterH[k] ?? 0) + 1;
@@ -211,11 +231,11 @@ async function main(): Promise<void> {
     }
 
     // OUT (C),r group: ED 41/49/51/59/61/69/71/79
-    if (bb[0] === 0xed && (bb.length >= 2)) {
-      const sub = ((bb[1] as number) & 0xff);
+    if (bb[0] === 0xed && bb.length >= 2) {
+      const sub = (bb[1] as number) & 0xff;
       if ((sub & 0xc7) === 0x41) {
         const cVal = ev.regs?.c ?? 0xff;
-        const cp = (cVal & 0xff);
+        const cp = cVal & 0xff;
         const ck = `0x${cp.toString(16)}`;
         probe.outCByPort[ck] = (probe.outCByPort[ck] ?? 0) + 1;
       }
@@ -248,7 +268,7 @@ async function main(): Promise<void> {
   });
 
   const vdp = m.getVDP();
-  const st0 = vdp.getState ? vdp.getState() : undefined;
+  const st0 = vdp.getState ? vdp.getState?.() : undefined;
   const cyclesPerFrame = (st0?.cyclesPerLine ?? 228) * (st0?.linesPerFrame ?? 262);
   const maxFrames = Math.max(1, Math.floor(seconds * 60));
 
@@ -256,12 +276,14 @@ async function main(): Promise<void> {
     m.runCycles(cyclesPerFrame);
     probe.frames++;
   }
-  const st = vdp.getState ? vdp.getState() : undefined;
+  const st = vdp.getState ? vdp.getState?.() : undefined;
   probe.cramWrites = st?.cramWrites ?? 0;
 
   // eslint-disable-next-line no-console
   console.log(JSON.stringify(probe, null, 2));
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
-
+main().catch(e => {
+  console.error(e);
+  process.exit(1);
+});

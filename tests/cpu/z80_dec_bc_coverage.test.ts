@@ -12,7 +12,7 @@ describe('Z80 DEC BC branch coverage', (): void => {
     mem.set([0x01, 0x00, 0x10, 0x0b], 0x0000);
     const cpu = createZ80({ bus });
 
-    let c = step(cpu);
+    const c = step(cpu);
     expect(c).toBe(10); // LD BC,nn
     const c2 = step(cpu);
     expect(c2).toBe(6); // DEC BC

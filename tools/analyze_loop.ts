@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 const rom = readFileSync('./sonic.sms');
 
@@ -7,8 +7,8 @@ console.log('=== Analyzing the initialization loop ===\n');
 
 // Show raw bytes
 console.log('Raw bytes from 0x02B0 to 0x02C5:');
-for (let addr = 0x02B0; addr < 0x02C5; addr++) {
-  process.stdout.write(rom[addr]!.toString(16).padStart(2, '0') + ' ');
+for (let addr = 0x02b0; addr < 0x02c5; addr++) {
+  process.stdout.write((rom[addr] ?? 0)!.toString(16).padStart(2, '0') + ' ');
 }
 console.log('\n');
 
@@ -16,7 +16,7 @@ console.log('\n');
 console.log('Manual analysis:');
 console.log('0x02B0: 18 D2     - JR -46 (jumps to 0x0284)');
 console.log('0x02B2: 06 0B     - LD B,0x0B');
-console.log('0x02B4: 0E 8B     - LD C,0x8B'); 
+console.log('0x02B4: 0E 8B     - LD C,0x8B');
 console.log('0x02B6: 7E        - LD A,(HL)');
 console.log('0x02B7: 12        - LD (DE),A');
 console.log('0x02B8: 23        - INC HL');
@@ -42,7 +42,7 @@ console.log('- Starting at 0x80 (when B=11) up to 0x8A (when B=1)');
 console.log('\n=== The 11 bytes being copied ===');
 console.log('Source at 0x0311:');
 for (let i = 0; i < 11; i++) {
-  const byte = rom[0x0311 + i]!;
+  const byte = (rom[0x0311 + i] ?? 0)!;
   process.stdout.write(byte.toString(16).padStart(2, '0') + ' ');
 }
 console.log();
@@ -54,13 +54,13 @@ console.log('2. VRAM at addresses 0x0080-0x008A');
 console.log('');
 console.log('Then it jumps to 0x0284, expecting to find different code.');
 console.log('Since 0x0284 is in the first 1KB, it must be expecting:');
-console.log('- The mapper to have changed what\'s there');
+console.log("- The mapper to have changed what's there");
 console.log('- Or some other hardware effect');
 
 console.log('\n=== Checking what the bytes mean ===');
 const bytes: number[] = [];
 for (let i = 0; i < 11; i++) {
-  bytes.push(rom[0x0311 + i]!);
+  bytes.push((rom[0x0311 + i] ?? 0)!);
 }
 console.log('Bytes as potential Z80 code:');
 const readFn = (addr: number): number => bytes[addr] ?? 0;

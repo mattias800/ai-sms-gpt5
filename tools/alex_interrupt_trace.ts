@@ -1,7 +1,8 @@
+import type { TraceEvent } from '../src/cpu/z80/z80.js';
 import { readFileSync } from 'fs';
-import { createMachine } from '../machine/machine.js';
-import type { Cartridge } from '../bus/bus.js';
-import { disassembleOne } from '../cpu/z80/disasm.js';
+import { createMachine } from '../src/machine/machine.js';
+import type { Cartridge } from '../src/bus/bus.js';
+import { disassembleOne } from '../src/cpu/z80/disasm.js';
 
 const romFile = './Alex Kidd - The Lost Stars (UE) [!].sms';
 const rom = new Uint8Array(readFileSync(romFile));
@@ -12,17 +13,17 @@ const cart: Cartridge = { rom };
 let eiFound = false;
 let irqAccepted = false;
 
-const m = createMachine({ 
-  cart, 
+const m = createMachine({
+  cart,
   fastBlocks: false,
   trace: {
-    onTrace: (ev) => {
+    onTrace: (ev: TraceEvent) => {
       // Check for EI instruction
-      if (ev.opcode === 0xFB && !eiFound) {
+      if (ev.opcode === 0xfb && !eiFound) {
         eiFound = true;
         console.log(`EI found at PC=0x${ev.pcBefore.toString(16).padStart(4, '0')}`);
       }
-      
+
       // Check for interrupt acceptance
       if (ev.irqAccepted && !irqAccepted) {
         irqAccepted = true;
@@ -31,7 +32,7 @@ const m = createMachine({
     },
     traceDisasm: false,
     traceRegs: false,
-  }
+  },
 });
 
 const cyclesPerFrame = 59736;
@@ -39,13 +40,13 @@ console.log('Running for 300 frames (5 seconds)...\n');
 
 for (let frame = 0; frame < 300; frame++) {
   m.runCycles(cyclesPerFrame);
-  
+
   if (frame % 60 === 0) {
     const cpu = m.getCPU();
     const vdp = m.getVDP();
     const cpuState = cpu.getState();
-    const vdpState = vdp.getState ? vdp.getState() : undefined;
-    
+    const vdpState = vdp.getState ? vdp.getState?.() : undefined;
+
     console.log(`Frame ${frame}:`);
     console.log(`  PC=0x${cpuState.pc.toString(16).padStart(4, '0')}, IFF1=${cpuState.iff1}, IM=${cpuState.im}`);
     if (vdpState) {
@@ -57,7 +58,7 @@ for (let frame = 0; frame < 300; frame++) {
 
 if (!eiFound) {
   console.log('\n⚠️ EI instruction was never executed!');
-} 
+}
 
 if (!irqAccepted) {
   console.log('⚠️ No IRQs were accepted!');
@@ -70,15 +71,17 @@ console.log(`\nFinal state: PC=0x${cpuState.pc.toString(16).padStart(4, '0')}, I
 
 // Look for EI in the ROM
 console.log('\n=== Searching for EI instructions in ROM ===');
-let eiLocations = [];
+const eiLocations = [];
 for (let i = 0; i < rom.length; i++) {
-  if (rom[i] === 0xFB) {
+  if (rom[i] === 0xfb) {
     eiLocations.push(i);
     if (eiLocations.length <= 10) {
       // Show context
-      const before = i > 0 ? rom[i-1]! : 0;
-      const after = i < rom.length - 1 ? rom[i+1]! : 0;
-      console.log(`  EI at 0x${i.toString(16).padStart(4, '0')}: [0x${before.toString(16).padStart(2, '0')} FB 0x${after.toString(16).padStart(2, '0')}]`);
+      const before = i > 0 ? (rom[i - 1] ?? 0)! : 0;
+      const after = i < rom.length - 1 ? (rom[i + 1] ?? 0)! : 0;
+      console.log(
+        `  EI at 0x${i.toString(16).padStart(4, '0')}: [0x${before.toString(16).padStart(2, '0')} FB 0x${after.toString(16).padStart(2, '0')}]`
+      );
     }
   }
 }

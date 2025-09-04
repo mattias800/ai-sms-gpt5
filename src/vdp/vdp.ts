@@ -11,6 +11,8 @@ export interface VdpPublicState {
   spriteAttrBase: number;
   spritePatternBase: number;
   borderColor: number;
+  hScroll: number; // Horizontal scroll
+  vScroll: number; // Vertical scroll
   curAddr: number;
   curCode: number;
   lastHcRaw: number;
@@ -30,6 +32,10 @@ export interface IVDP {
   tickCycles: (cpuCycles: number) => void;
   hasIRQ: () => boolean;
   getState?: () => VdpPublicState;
+  renderFrame?: () => Uint8Array;
+  getVRAM?: () => Uint8Array;
+  getCRAM?: () => Uint8Array;
+  getRegister?: (idx: number) => number;
 }
 
 export interface VdpTimingConfig {
@@ -142,7 +148,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         // Register write: index in low 4 bits, value is low byte
         const reg = high & 0x0f;
         let value = low;
-        
+
         // Handle register 0 special case: M3 and M4 mode bits conflict
         if (reg === 0) {
           // Check if both M3 (bit 1) and M4 (bit 2) are set
@@ -150,10 +156,10 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           const m4 = (value & 0x04) !== 0;
           if (m3 && m4) {
             // Mode 4 takes precedence - clear M3 bit
-            value = value & ~0x02;  // Clear bit 1 (M3)
+            value = value & ~0x02; // Clear bit 1 (M3)
           }
         }
-        
+
         s.regs[reg] = value;
         if (reg === 1) {
           // VBlank IRQ enable is bit 5 of reg1. If enabling during active VBlank, assert immediately.
@@ -310,11 +316,15 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     const r1 = regs[1] ?? 0;
     const vblankIrqEnabled = (r1 & 0x20) !== 0;
     const displayEnabled = (r1 & 0x40) !== 0;
-    const nameTableBase = ((regs[2] ?? 0) << 10) & 0x3fff;
-    const bgPatternBase = ((regs[4] ?? 0) << 11) & 0x3fff;
-    const spriteAttrBase = ((regs[5] ?? 0) << 7) & 0x3fff;
-    const spritePatternBase = ((regs[6] ?? 0) << 11) & 0x3fff;
+    // Fix address calculations to match SMS hardware
+    // Name table is at bits 3-1 of R2 (not 7-1) for Mode 4
+    const nameTableBase = (((regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11 (0x0000, 0x0800, 0x1000...0x3800)
+    const bgPatternBase = 0x0000; // Background patterns are always at 0x0000 in SMS Mode 4
+    const spriteAttrBase = ((regs[5] ?? 0) & 0x7e) << 7; // R5[6:1] << 7
+    const spritePatternBase = (regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // R6[2] selects 0x0000 or 0x2000
     const borderColor = (regs[7] ?? 0) & 0x0f;
+    const hScroll = regs[8] ?? 0; // Horizontal scroll value
+    const vScroll = regs[9] ?? 0; // Vertical scroll value
     return {
       regs,
       status: s.status & 0xff,
@@ -328,6 +338,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       spriteAttrBase,
       spritePatternBase,
       borderColor,
+      hScroll,
+      vScroll,
       curAddr: s.addr & 0x3fff,
       curCode: s.code & 0x03,
       lastHcRaw: s.lastHcRaw & 0xff,
@@ -342,5 +354,208 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     };
   };
 
-  return { readPort, writePort, tickCycles, hasIRQ, getState };
+  const renderFrame = (): Uint8Array => {
+    // Create RGB frame buffer (256x192 pixels, 3 bytes per pixel)
+    const frameBuffer = new Uint8Array(256 * 192 * 3);
+
+    // Check if display is enabled
+    const displayEnabled = ((s.regs[1] ?? 0) & 0x40) !== 0;
+    if (!displayEnabled) {
+      // Return black screen
+      return frameBuffer;
+    }
+
+    // Get base addresses from registers
+    // SMS Mode 4 register mappings:
+    // Name table: R2[3:1] selects one of 8 possible 2KB name tables (0x0000, 0x0800, 0x1000...0x3800)
+    // Pattern table for BG: ALWAYS at 0x0000 in SMS Mode 4 (R4 is unused for BG patterns)
+    // Sprite attribute table: R5[6:1] defines A13-A7 (shifted left 7)
+    // Sprite pattern: 0x0000 if R6[2]=0, 0x2000 if R6[2]=1
+    const nameTableBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11
+    const patternBase = 0x0000; // Background patterns are always at 0x0000 in SMS Mode 4
+    const spriteAttrBase = ((s.regs[5] ?? 0) & 0x7e) << 7; // Bits 6-1 of R5
+    const spritePatternBase = (s.regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // Bit 2 of R6
+    const bgColor = (s.regs[7] ?? 0) & 0x0f; // Background color index
+
+    // Convert SMS palette entry to RGB
+    const paletteToRGB = (palIdx: number): [number, number, number] => {
+      const entry = (s.cram[palIdx & 0x1f] ?? 0) & 0x3f;
+      // SMS palette: 00BBGGRR (2 bits per component)
+      const r = ((entry & 0x03) * 85) & 0xff; // 0,85,170,255
+      const g = (((entry >> 2) & 0x03) * 85) & 0xff;
+      const b = (((entry >> 4) & 0x03) * 85) & 0xff;
+      return [r, g, b];
+    };
+
+    // Fill with background color (using BG palette, first 16 colors)
+    const [bgR, bgG, bgB] = paletteToRGB(bgColor); // Background color from BG palette
+    for (let i = 0; i < 256 * 192; i++) {
+      frameBuffer[i * 3] = bgR;
+      frameBuffer[i * 3 + 1] = bgG;
+      frameBuffer[i * 3 + 2] = bgB;
+    }
+
+    // Get scrolling values
+    const hScroll = s.regs[8] ?? 0; // Horizontal scroll (0-255)
+    const vScroll = s.regs[9] ?? 0; // Vertical scroll (0-223 typically)
+
+    // Render background tiles (name table) with scrolling
+    for (let screenY = 0; screenY < 192; screenY++) {
+      for (let screenX = 0; screenX < 256; screenX++) {
+        // Calculate the actual position in the tilemap after scrolling
+        const scrolledY = (screenY + vScroll) & 0xff; // Wrap at 256
+        const scrolledX = (screenX - hScroll) & 0xff; // SMS scrolls left (subtract)
+
+        const tileY = scrolledY >> 3; // Divide by 8 to get tile row
+        const tileX = scrolledX >> 3; // Divide by 8 to get tile column
+        const pixelY = scrolledY & 7; // Y position within the tile
+        const pixelX = scrolledX & 7; // X position within the tile
+
+        // Calculate name table index (handle wrapping for extended tilemaps)
+        const nameIdx = ((tileY & 0x1f) * 32 + (tileX & 0x1f)) & 0x7ff;
+        const nameAddr = (nameTableBase + nameIdx * 2) & 0x3fff;
+
+        // Each name table entry is 2 bytes
+        const nameLow = s.vram[nameAddr] ?? 0;
+        const nameHigh = s.vram[nameAddr + 1] ?? 0;
+
+        // Extract tile number and attributes
+        const tileNum = nameLow | ((nameHigh & 0x01) << 8); // 9-bit tile number
+        const hFlip = (nameHigh & 0x02) !== 0;
+        const vFlip = (nameHigh & 0x04) !== 0;
+        const palette = (nameHigh & 0x08) !== 0 ? 1 : 0; // 0=BG palette, 1=sprite palette
+        const priority = (nameHigh & 0x10) !== 0;
+
+        // Don't skip tile 0 for background - it's valid
+        // Only sprites have transparent tile 0
+
+        // Each tile is 32 bytes (8x8 pixels, 4 bits per pixel)
+        const tileAddr = (patternBase + tileNum * 32) & 0x3fff;
+
+        // Get the specific pixel from the tile
+        const sx = hFlip ? 7 - pixelX : pixelX;
+        const sy = vFlip ? 7 - pixelY : pixelY;
+
+        // SMS tiles are 32 bytes: 8 rows × 4 bytes per row
+        // Each row has 4 bytes representing 4 bitplanes
+        // Pixels are stored with MSB on the left
+        const rowAddr = (tileAddr + sy * 4) & 0x3fff;
+        const bit = 7 - sx; // MSB first
+
+        // Read 4 bitplanes for this pixel
+        const plane0 = ((s.vram[rowAddr] ?? 0) >> bit) & 1;
+        const plane1 = ((s.vram[rowAddr + 1] ?? 0) >> bit) & 1;
+        const plane2 = ((s.vram[rowAddr + 2] ?? 0) >> bit) & 1;
+        const plane3 = ((s.vram[rowAddr + 3] ?? 0) >> bit) & 1;
+
+        // Combine planes to get color index (0-15)
+        const colorIdx = plane0 | (plane1 << 1) | (plane2 << 2) | (plane3 << 3);
+
+        // For backgrounds, color 0 is not transparent - it uses palette color 0
+        // We only skip if this is the BG fill color already there
+
+        // Write to frame buffer
+        const fbIdx = (screenY * 256 + screenX) * 3;
+        const palOffset = palette ? 16 : 0;
+        const [r, g, b] = paletteToRGB(palOffset + colorIdx);
+
+        frameBuffer[fbIdx] = r;
+        frameBuffer[fbIdx + 1] = g;
+        frameBuffer[fbIdx + 2] = b;
+      }
+    }
+
+    // Render sprites
+    // SMS can display up to 64 sprites, with max 8 per scanline
+    const spriteSize = ((s.regs[1] ?? 0) & 0x02) !== 0 ? 16 : 8; // 8x8 or 8x16 sprites
+    const spriteMag = ((s.regs[1] ?? 0) & 0x01) !== 0; // Sprite magnification (zoom)
+    const actualSpriteWidth = spriteMag ? 16 : 8;
+    const actualSpriteHeight = spriteMag ? spriteSize * 2 : spriteSize;
+
+    // Process sprites in reverse order (sprite 0 has highest priority)
+    for (let spriteNum = 63; spriteNum >= 0; spriteNum--) {
+      // Read sprite Y from sprite attribute table (SAT)
+      const satYAddr = (spriteAttrBase + spriteNum) & 0x3fff;
+      const spriteY = s.vram[satYAddr] ?? 0;
+
+      // Y=0xD0 is the sprite list terminator
+      if (spriteY === 0xd0) continue;
+
+      // Sprites with Y >= 0xE0 are also treated as off-screen
+      if (spriteY >= 0xe0) continue;
+
+      // Read sprite X and pattern from extended SAT (starts at SAT + 128)
+      const satXAddr = (spriteAttrBase + 128 + spriteNum * 2) & 0x3fff;
+      const spriteX = s.vram[satXAddr] ?? 0;
+      const spritePattern = s.vram[satXAddr + 1] ?? 0;
+
+      // Adjust Y coordinate (Y+1 is the actual display line)
+      const displayY = (spriteY + 1) & 0xff;
+
+      // Skip if sprite is completely off-screen
+      if (displayY >= 192 + actualSpriteHeight) continue;
+
+      // For 8x16 sprites, pattern number's LSB is ignored (patterns must be even)
+      const patternNum = spriteSize === 16 ? spritePattern & 0xfe : spritePattern;
+
+      // Render sprite pixels
+      for (let sy = 0; sy < actualSpriteHeight; sy++) {
+        const screenY = displayY + sy;
+        if (screenY >= 192) break; // Off bottom of screen
+        if (screenY < 0) continue; // Off top of screen
+
+        for (let sx = 0; sx < actualSpriteWidth; sx++) {
+          const screenX = spriteX + sx;
+          if (screenX >= 256) continue; // Off right edge
+          if (screenX < 0) continue; // Off left edge
+
+          // Calculate which pixel of the pattern to use
+          const patternX = spriteMag ? sx >> 1 : sx;
+          const patternY = spriteMag ? sy >> 1 : sy;
+
+          // For 8x16 sprites, determine which 8x8 tile we're in
+          let tileOffset = 0;
+          let tileY = patternY;
+          if (spriteSize === 16) {
+            if (patternY >= 8) {
+              tileOffset = 1; // Second tile
+              tileY = patternY - 8;
+            }
+          }
+
+          // Calculate pattern address
+          const tileNum = patternNum + tileOffset;
+          const tileAddr = (spritePatternBase + tileNum * 32 + tileY * 4) & 0x3fff;
+          const bit = 7 - patternX;
+
+          // Read color from 4 bitplanes
+          const plane0 = ((s.vram[tileAddr] ?? 0) >> bit) & 1;
+          const plane1 = ((s.vram[tileAddr + 1] ?? 0) >> bit) & 1;
+          const plane2 = ((s.vram[tileAddr + 2] ?? 0) >> bit) & 1;
+          const plane3 = ((s.vram[tileAddr + 3] ?? 0) >> bit) & 1;
+
+          const colorIdx = plane0 | (plane1 << 1) | (plane2 << 2) | (plane3 << 3);
+
+          // Color 0 is transparent for sprites
+          if (colorIdx === 0) continue;
+
+          // Sprites always use the sprite palette (colors 16-31)
+          const fbIdx = (screenY * 256 + screenX) * 3;
+          const [r, g, b] = paletteToRGB(16 + colorIdx);
+
+          frameBuffer[fbIdx] = r;
+          frameBuffer[fbIdx + 1] = g;
+          frameBuffer[fbIdx + 2] = b;
+        }
+      }
+    }
+
+    return frameBuffer;
+  };
+
+  const getVRAM = (): Uint8Array => s.vram;
+  const getCRAM = (): Uint8Array => s.cram;
+  const getRegister = (idx: number): number => s.regs[idx & 0x1f] ?? 0;
+
+  return { readPort, writePort, tickCycles, hasIRQ, getState, renderFrame, getVRAM, getCRAM, getRegister };
 };

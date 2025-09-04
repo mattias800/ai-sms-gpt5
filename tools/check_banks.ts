@@ -2,29 +2,31 @@ import { readFileSync } from 'fs';
 
 const rom = readFileSync('./sonic.sms');
 
-console.log('Checking what\'s at offset 0x284 in each 16KB bank:\n');
+console.log("Checking what's at offset 0x284 in each 16KB bank:\n");
 
 for (let bank = 0; bank < 16; bank++) {
   const base = bank * 0x4000;
   const addr = base + 0x284;
-  
+
   if (addr < rom.length) {
     const bytes: number[] = [];
     for (let i = 0; i < 32; i++) {
       if (addr + i < rom.length) {
-        bytes.push(rom[addr + i]!);
+        bytes.push((rom[addr + i] ?? 0)!);
       }
     }
-    
-    console.log(`Bank ${bank.toString().padStart(2)} (0x${bank.toString(16).padStart(2, '0')}), offset 0x${addr.toString(16).padStart(5, '0')}:`);
-    
+
+    console.log(
+      `Bank ${bank.toString().padStart(2)} (0x${bank.toString(16).padStart(2, '0')}), offset 0x${addr.toString(16).padStart(5, '0')}:`
+    );
+
     // Show hex
     process.stdout.write('  ');
     for (let i = 0; i < Math.min(16, bytes.length); i++) {
       process.stdout.write(bytes[i]!.toString(16).padStart(2, '0') + ' ');
     }
     console.log();
-    
+
     // Check if it looks like code or data
     const firstByte = bytes[0];
     if (firstByte === 0x3d) {
@@ -49,17 +51,22 @@ console.log('0x80 % 16 banks = bank 0');
 console.log('\nBut bank 0 at offset 0x284 has the same data bytes!');
 console.log('This suggests the game expects different behavior...');
 
-// Check if there's any pattern in bank 8 (0x08) 
+// Check if there's any pattern in bank 8 (0x08)
 console.log('\n=== Checking if lower nibble is used ===');
 console.log('What if only lower 4 bits matter? 0x80 & 0x0F = 0x00 -> still bank 0');
 console.log('What if bit 3 is special? 0x80 & 0x07 = 0x00 -> still bank 0');
 
 // Check header for hints
 console.log('\n=== ROM Header ===');
-const headerStart = 0x7FF0;
+const headerStart = 0x7ff0;
 const header = rom.subarray(headerStart, headerStart + 16);
-console.log('Header at 0x7FF0:', Array.from(header).map(b => String.fromCharCode(b)).join(''));
-console.log('Size byte at 0x7FFF:', '0x' + rom[0x7FFF]?.toString(16).padStart(2, '0'));
+console.log(
+  'Header at 0x7FF0:',
+  Array.from(header)
+    .map((b: any) => String.fromCharCode(b))
+    .join('')
+);
+console.log('Size byte at 0x7FFF:', '0x' + rom[0x7fff]?.toString(16).padStart(2, '0'));
 
 // Special check - what if first 1KB isn't fixed?
 console.log('\n=== Theory: First 1KB might not be fixed ===');
