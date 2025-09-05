@@ -75,6 +75,8 @@ interface VdpState {
   hcScaled: number; // fixed-point accumulator: cycles*256 within the current line (0..cyclesPerLine*256-1)
   lastHcRaw: number; // last raw HCounter value computed for 0x7E (0..255)
   lastHcLine: number; // line number when last HCounter was read
+  // per-scanline scroll capture (approximation of mid-frame writes)
+  hScrollLine: Uint8Array; // length = linesPerFrame; value used for that scanline
   // stats
   vramWrites: number;
   cramWrites: number;
@@ -126,6 +128,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     hcScaled: 0,
     lastHcRaw: 0,
     lastHcLine: 0,
+    hScrollLine: new Uint8Array(cfg.linesPerFrame | 0),
     vramWrites: 0,
     cramWrites: 0,
     lastCramIndex: -1,
@@ -166,9 +169,14 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           const irqEnabled = (value & 0x20) !== 0;
           if (!irqEnabled) {
             s.irqVLine = false;
-          } else if ((s.status & 0x80) !== 0) {
-            s.irqVLine = true;
+          } else {
+            // If we are in vblank now OR the vblank flag is already set, assert immediately
+            if (s.line >= s.vblankStartLine || (s.status & 0x80) !== 0) s.irqVLine = true;
           }
+        } else if (reg === 8) {
+          // Capture per-line H scroll value (approximate) at the current line
+          const ln = s.line;
+          if (ln >= 0 && ln < s.linesPerFrame) s.hScrollLine[ln] = value & 0xff;
         } else if (reg === 15) {
           // Guard against 0 auto-increment to avoid infinite loops in stub
           s.autoInc = value || 1;
@@ -295,6 +303,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       if (s.line >= s.linesPerFrame) {
         // New frame
         s.line = 0;
+        // Reset per-line scroll buffer to current global value
+        s.hScrollLine.fill(s.regs[8] ?? 0);
         // Clear VBlank flag at start of new frame if it wasn't read
         s.status &= ~0x80;
         // Also clear IRQ if VBlank flag was cleared
@@ -319,7 +329,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     // Fix address calculations to match SMS hardware
     // Name table is at bits 3-1 of R2 (not 7-1) for Mode 4
     const nameTableBase = (((regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11 (0x0000, 0x0800, 0x1000...0x3800)
-    const bgPatternBase = 0x0000; // Background patterns are always at 0x0000 in SMS Mode 4
+    const bgPatternBase = 0x0000;
     const spriteAttrBase = ((regs[5] ?? 0) & 0x7e) << 7; // R5[6:1] << 7
     const spritePatternBase = (regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // R6[2] selects 0x0000 or 0x2000
     const borderColor = (regs[7] ?? 0) & 0x0f;
@@ -357,6 +367,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
   const renderFrame = (): Uint8Array => {
     // Create RGB frame buffer (256x192 pixels, 3 bytes per pixel)
     const frameBuffer = new Uint8Array(256 * 192 * 3);
+    // Priority mask: 1 where BG tile has priority set AND BG pixel color != 0
+    const prioMask = new Uint8Array(256 * 192);
 
     // Check if display is enabled
     const displayEnabled = ((s.regs[1] ?? 0) & 0x40) !== 0;
@@ -372,7 +384,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     // Sprite attribute table: R5[6:1] defines A13-A7 (shifted left 7)
     // Sprite pattern: 0x0000 if R6[2]=0, 0x2000 if R6[2]=1
     const nameTableBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11
-    const patternBase = 0x0000; // Background patterns are always at 0x0000 in SMS Mode 4
+    const patternBase = 0x0000; // SMS Mode 4 BG pattern base fixed at 0x0000
     const spriteAttrBase = ((s.regs[5] ?? 0) & 0x7e) << 7; // Bits 6-1 of R5
     const spritePatternBase = (s.regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // Bit 2 of R6
     const bgColor = (s.regs[7] ?? 0) & 0x0f; // Background color index
@@ -396,7 +408,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     }
 
     // Get scrolling values
-    const hScroll = s.regs[8] ?? 0; // Horizontal scroll (0-255)
+    const hScrollGlobal = s.regs[8] ?? 0; // Horizontal scroll (0-255)
     const vScroll = s.regs[9] ?? 0; // Vertical scroll (0-223 typically)
 
     // Render background tiles (name table) with scrolling
@@ -404,7 +416,9 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       for (let screenX = 0; screenX < 256; screenX++) {
         // Calculate the actual position in the tilemap after scrolling
         const scrolledY = (screenY + vScroll) & 0xff; // Wrap at 256
-        const scrolledX = (screenX - hScroll) & 0xff; // SMS scrolls left (subtract)
+        // Use per-scanline captured HScroll if available, else global
+        const hScrollLine = s.hScrollLine[screenY] ?? hScrollGlobal;
+        const scrolledX = (screenX - hScrollLine) & 0xff; // SMS scrolls left (subtract)
 
         const tileY = scrolledY >> 3; // Divide by 8 to get tile row
         const tileX = scrolledX >> 3; // Divide by 8 to get tile column
@@ -420,17 +434,18 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         const nameHigh = s.vram[nameAddr + 1] ?? 0;
 
         // Extract tile number and attributes
-        const tileNum = nameLow | ((nameHigh & 0x01) << 8); // 9-bit tile number
+        const tileNum = nameLow | ((nameHigh & 0x01) << 8); // tile number (high bit present but BG fetch uses banked 8-bit index)
         const hFlip = (nameHigh & 0x02) !== 0;
         const vFlip = (nameHigh & 0x04) !== 0;
-        const palette = (nameHigh & 0x08) !== 0 ? 1 : 0; // 0=BG palette, 1=sprite palette
+        const palette = (nameHigh & 0x08) !== 0 ? 1 : 0; // 0=BG palette, 1=sprite palette (ignored for BG on SMS)
         const priority = (nameHigh & 0x10) !== 0;
 
         // Don't skip tile 0 for background - it's valid
         // Only sprites have transparent tile 0
 
         // Each tile is 32 bytes (8x8 pixels, 4 bits per pixel)
-        const tileAddr = (patternBase + tileNum * 32) & 0x3fff;
+        // BG pattern fetch uses 10-bit tile index in SMS Mode 4 (0..511) at fixed base 0x0000
+        const tileAddr = (patternBase + ((tileNum & 0x3ff) << 5)) & 0x3fff;
 
         // Get the specific pixel from the tile
         const sx = hFlip ? 7 - pixelX : pixelX;
@@ -456,12 +471,15 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
 
         // Write to frame buffer
         const fbIdx = (screenY * 256 + screenX) * 3;
-        const palOffset = palette ? 16 : 0;
-        const [r, g, b] = paletteToRGB(palOffset + colorIdx);
+        // On Master System (Mode 4), BG tiles always use the background palette (0..15).
+        // The palette select bit is only meaningful on Game Gear; ignore it here.
+        const [r, g, b] = paletteToRGB(colorIdx & 0x0f);
 
         frameBuffer[fbIdx] = r;
         frameBuffer[fbIdx + 1] = g;
         frameBuffer[fbIdx + 2] = b;
+        // Record priority mask only when non-zero BG pixel
+        if (priority && colorIdx !== 0) prioMask[screenY * 256 + screenX] = 1;
       }
     }
 
@@ -472,8 +490,35 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     const actualSpriteWidth = spriteMag ? 16 : 8;
     const actualSpriteHeight = spriteMag ? spriteSize * 2 : spriteSize;
 
+    // Determine sprite terminator: first Y==0xD0 from index 0..63 disables subsequent entries
+    let activeSprites = 64;
+    for (let i = 0; i < 64; i++) {
+      const y = s.vram[(spriteAttrBase + i) & 0x3fff] ?? 0;
+      if (y === 0xd0) { activeSprites = i; break; }
+    }
+
+    // Precompute which sprites are allowed per scanline under 8-sprite-per-line limit.
+    const perLineCount = new Uint16Array(192);
+    const allowed: Uint8Array[] = Array.from({ length: 192 }, () => new Uint8Array(64));
+    for (let i = 0; i < activeSprites; i++) {
+      const y = s.vram[(spriteAttrBase + i) & 0x3fff] ?? 0;
+      if (y >= 0xe0) continue; // off-screen
+      const displayY = y + 1;
+      const spriteSize = ((s.regs[1] ?? 0) & 0x02) !== 0 ? 16 : 8;
+      const spriteMag = ((s.regs[1] ?? 0) & 0x01) !== 0;
+      const actualSpriteHeight = spriteMag ? spriteSize * 2 : spriteSize;
+      for (let sy = 0; sy < actualSpriteHeight; sy++) {
+        const line = displayY + sy;
+        if (line < 0 || line >= 192) continue;
+        if (perLineCount[line] < 8) {
+          allowed[line][i] = 1;
+          perLineCount[line]++;
+        }
+      }
+    }
+
     // Process sprites in reverse order (sprite 0 has highest priority)
-    for (let spriteNum = 63; spriteNum >= 0; spriteNum--) {
+    for (let spriteNum = activeSprites - 1; spriteNum >= 0; spriteNum--) {
       // Read sprite Y from sprite attribute table (SAT)
       const satYAddr = (spriteAttrBase + spriteNum) & 0x3fff;
       const spriteY = s.vram[satYAddr] ?? 0;
@@ -490,10 +535,12 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       const spritePattern = s.vram[satXAddr + 1] ?? 0;
 
       // Adjust Y coordinate (Y+1 is the actual display line)
-      const displayY = (spriteY + 1) & 0xff;
+      // Note: Don't mask with 0xff yet - we need the full value for off-screen checks
+      const displayY = spriteY + 1;
 
-      // Skip if sprite is completely off-screen
-      if (displayY >= 192 + actualSpriteHeight) continue;
+      // Skip if sprite is completely off-screen (top or bottom)
+      // Sprites with Y=255 will have displayY=256 and should be off-screen
+      if (displayY >= 192 + actualSpriteHeight || displayY + actualSpriteHeight <= 0) continue;
 
       // For 8x16 sprites, pattern number's LSB is ignored (patterns must be even)
       const patternNum = spriteSize === 16 ? spritePattern & 0xfe : spritePattern;
@@ -503,6 +550,11 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         const screenY = displayY + sy;
         if (screenY >= 192) break; // Off bottom of screen
         if (screenY < 0) continue; // Off top of screen
+
+        // If this sprite is not allowed on this scanline (due to 8-sprite limit), skip this line for this sprite
+        if (!allowed[screenY][spriteNum]) continue;
+        // We no longer need to count here, it was done in the pre-pass
+        let drewAnyPixelThisLine = false;
 
         for (let sx = 0; sx < actualSpriteWidth; sx++) {
           const screenX = spriteX + sx;
@@ -539,6 +591,14 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           // Color 0 is transparent for sprites
           if (colorIdx === 0) continue;
 
+          // We don't update counts here; pre-pass decided allowance. Just note we drew a pixel for this sprite/line.
+          if (!drewAnyPixelThisLine) {
+            drewAnyPixelThisLine = true;
+          }
+
+          // If BG priority mask is set here, skip drawing sprite pixel (BG in front)
+          if (prioMask[screenY * 256 + screenX]) continue;
+
           // Sprites always use the sprite palette (colors 16-31)
           const fbIdx = (screenY * 256 + screenX) * 3;
           const [r, g, b] = paletteToRGB(16 + colorIdx);
@@ -546,6 +606,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           frameBuffer[fbIdx] = r;
           frameBuffer[fbIdx + 1] = g;
           frameBuffer[fbIdx + 2] = b;
+          // Continue drawing remaining pixels; limit enforced per-scanline per-sprite
         }
       }
     }

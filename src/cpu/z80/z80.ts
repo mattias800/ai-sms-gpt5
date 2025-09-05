@@ -67,6 +67,12 @@ export interface TraceEvent {
   regs?: RegsSnapshot | undefined; // optional register snapshot (after instruction)
 }
 
+export interface Z80DebugHooks {
+  onPush16?: (spBefore: number, value: number, pcAtPush: number) => void;
+  onPop16?: (spBefore: number, value: number, pcAtPop: number) => void;
+  onMemWrite?: (addr: number, val: number, pcAtWrite: number) => void;
+}
+
 export interface CreateZ80Options {
   bus: IBus;
   waitStates?: WaitStateHooks | null;
@@ -76,6 +82,8 @@ export interface CreateZ80Options {
   // Experimental: accelerate repeated block ops (LDIR/LDDR) in one step. Interrupts are not
   // recognized during the collapsed block (safe for our use since EI has not occurred yet).
   experimentalFastBlockOps?: boolean;
+  // Optional debug hooks (used by tools/tests)
+  debugHooks?: Z80DebugHooks | undefined;
 }
 
 export const createZ80 = (opts: CreateZ80Options): IZ80 => {
@@ -120,6 +128,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
   };
   const write8 = (addr: number, val: number): void => {
     bus.write8(addr, val);
+    if (opts.debugHooks?.onMemWrite) opts.debugHooks.onMemWrite(addr & 0xffff, val & 0xff, s.pc & 0xffff);
     addMemPenalty(addr, true);
   };
   const readIO8 = (port: number): number => {
@@ -271,18 +280,23 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
   };
 
   const push16 = (v: number): void => {
+    const spBefore = s.sp & 0xffff;
     s.sp = (s.sp - 1) & 0xffff;
     write8(s.sp, (v >>> 8) & 0xff);
     s.sp = (s.sp - 1) & 0xffff;
     write8(s.sp, v & 0xff);
+    if (opts.debugHooks?.onPush16) opts.debugHooks.onPush16(spBefore, v & 0xffff, s.pc & 0xffff);
   };
 
   const pop16 = (): number => {
+    const spBefore = s.sp & 0xffff;
     const lo = read8(s.sp);
     s.sp = (s.sp + 1) & 0xffff;
     const hi = read8(s.sp);
     s.sp = (s.sp + 1) & 0xffff;
-    return ((hi << 8) | lo) & 0xffff;
+    const val = ((hi << 8) | lo) & 0xffff;
+    if (opts.debugHooks?.onPop16) opts.debugHooks.onPop16(spBefore, val, s.pc & 0xffff);
+    return val;
   };
 
   const read16 = (addr: number): number => {
@@ -446,7 +460,38 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         }
       }
       // No interrupt accepted this step while halted: consume 4 cycles
-      return mkRes(4, false, false);
+      // Emit a HALT idle trace line instead of ambiguous <INT>
+      if (typeof opts.onTrace === 'function') {
+        const regs = opts.traceRegs
+          ? {
+              a: s.a & 0xff,
+              f: s.f & 0xff,
+              b: s.b & 0xff,
+              c: s.c & 0xff,
+              d: s.d & 0xff,
+              e: s.e & 0xff,
+              h: s.h & 0xff,
+              l: s.l & 0xff,
+              ix: s.ix & 0xffff,
+              iy: s.iy & 0xffff,
+              sp: s.sp & 0xffff,
+              pc: s.pc & 0xffff,
+              i: s.i & 0xff,
+              r: s.r & 0xff,
+            }
+          : undefined;
+        opts.onTrace({
+          pcBefore: s.pc & 0xffff,
+          opcode: null,
+          cycles: 4,
+          irqAccepted: false,
+          nmiAccepted: false,
+          text: 'HALT',
+          bytes: undefined,
+          regs,
+        });
+      }
+      return { cycles: 4, irqAccepted: false, nmiAccepted: false };
     }
 
     // Not halted: peek next opcode to avoid preempting HALT for maskable IRQs.

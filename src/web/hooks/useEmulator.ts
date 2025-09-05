@@ -116,6 +116,11 @@ export const useEmulator = ({
       let handled = true;
       const state = keyStateRef.current;
 
+      // Attempt to unlock/resume audio on user gesture (browser autoplay policies)
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+
       switch (e.key) {
         case 'ArrowUp':
           state.up = true;
@@ -218,11 +223,31 @@ export const useEmulator = ({
       try {
         const machine = machineRef.current;
 
-        // Run one frame of emulation
-        const cyclesPerFrame = 59736; // 228 * 262
-        machine.runCycles(cyclesPerFrame);
+        // Run one frame of emulation interleaved with audio sampling
+        const vdpState = machine.getVDP().getState ? machine.getVDP().getState?.() : undefined;
+        const cyclesPerLine = vdpState?.cyclesPerLine ?? 228;
+        const linesPerFrame = vdpState?.linesPerFrame ?? 262;
+        const cyclesPerFrame = cyclesPerLine * linesPerFrame;
 
-        // Render frame
+        const samplesPerFrame = Math.floor(44100 / 60); // ~735
+        const cyclesPerSample = Math.max(1, Math.floor(cyclesPerFrame / samplesPerFrame)); // ~81
+
+        // Limit buffer size to prevent lag (keep ~100ms of buffered audio)
+        const buffer = sampleBufferRef.current;
+        const wantAudio = !!audioContextRef.current && !isMuted;
+
+        for (let i = 0; i < samplesPerFrame; i++) {
+          machine.runCycles(cyclesPerSample);
+          if (wantAudio) {
+            const s = machine.getPSG().getSample();
+            if (buffer.length < 4410) buffer.push(s);
+          }
+        }
+        // Run any leftover cycles to complete the frame
+        const leftover = cyclesPerFrame - cyclesPerSample * samplesPerFrame;
+        if (leftover > 0) machine.runCycles(leftover);
+
+        // Render frame once per RAF
         const vdp = machine.getVDP();
         if (vdp.renderFrame) {
           const frameBuffer = vdp.renderFrame();
@@ -239,21 +264,6 @@ export const useEmulator = ({
           }
 
           ctx.putImageData(imageData, 0, 0);
-        }
-
-        // Generate audio samples
-        if (audioContextRef.current && !isMuted) {
-          const psg = machine.getPSG();
-          const samplesPerFrame = Math.floor(44100 / 60);
-          const buffer = sampleBufferRef.current;
-
-          // Limit buffer size to prevent lag
-          if (buffer.length < 4410) { // 100ms of audio
-            for (let i = 0; i < samplesPerFrame; i++) {
-              const sample = psg.getSample();
-              buffer.push(sample);
-            }
-          }
         }
 
         // Update FPS

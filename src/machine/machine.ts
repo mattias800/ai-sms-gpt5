@@ -14,7 +14,7 @@ export interface MachineWaitConfig {
 export interface MachineConfig {
   cart: Cartridge;
   wait?: MachineWaitConfig | undefined;
-  bus?: { allowCartRam?: boolean } | undefined;
+  bus?: { allowCartRam?: boolean; bios?: Uint8Array | null } | undefined;
   trace?:
     | {
         onTrace?: ((ev: import('../cpu/z80/z80.js').TraceEvent) => void) | undefined;
@@ -24,6 +24,8 @@ export interface MachineConfig {
     | undefined;
   // Experimental CPU acceleration options
   fastBlocks?: boolean | undefined;
+  // Optional CPU debug hooks for instrumentation
+  cpuDebugHooks?: import('../cpu/z80/z80.js').Z80DebugHooks | undefined;
 }
 
 export interface IMachine {
@@ -41,7 +43,7 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
   const psg = createPSG();
   const controller1 = createController();
   const controller2 = createController();
-  const bus = new SmsBus(cfg.cart, vdp, psg, controller1, controller2, { allowCartRam: cfg.bus?.allowCartRam ?? true });
+  const bus = new SmsBus(cfg.cart, vdp, psg, controller1, controller2, { allowCartRam: cfg.bus?.allowCartRam ?? true, bios: cfg.bus?.bios ?? null });
 
   // Optional wait-state hooks
   const waitHooks = cfg.wait?.smsModel
@@ -58,6 +60,7 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
     traceDisasm: !!cfg.trace?.traceDisasm,
     traceRegs: !!cfg.trace?.traceRegs,
     experimentalFastBlockOps: !!cfg.fastBlocks,
+    debugHooks: cfg.cpuDebugHooks,
   });
 
   const runCycles = (cycles: number): void => {

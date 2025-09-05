@@ -5,6 +5,13 @@ import { SmsBus } from '../src/bus/bus.js';
 import type { Cartridge } from '../src/bus/bus.js';
 import zlib from 'zlib';
 
+// Usage:
+//   npx tsx tools/headless_sonic.ts <rom> <output.png> [seconds] [until] [nowait] [forceei] [nohc] [cyclemul] [--renderer=vdp|simple] [--verify-sprites]
+// 
+// --renderer=vdp (default): Use VDP's full renderFrame() with sprite support
+// --renderer=simple: Use background-only renderer (legacy)
+// --verify-sprites: Render both methods and report differences
+//
 // Simple SMS renderer: background tiles only (no sprites), no scroll, no flips.
 // Assumptions:
 // - Name table entries are 2 bytes (little-endian). Low 10 bits = tile index; ignore flips/priority.
@@ -23,7 +30,7 @@ function rgbFromCram(val: number): [number, number, number] {
   return [r, g, b];
 }
 
-function renderFrame(
+function renderBgOnly(
   vram: Uint8Array | number[],
   cram: Uint8Array | number[],
   nameBase: number,
@@ -235,12 +242,25 @@ async function main(): Promise<void> {
     };
     pngSource: 'game' | 'fallback';
     pngNonZeroRGB: number;
+    renderer: 'vdp' | 'simple';
+    vdpRendererAvailable: boolean;
+    verify?: {
+      used: boolean;
+      available: boolean;
+      diffRGBTriplets: number;
+      sameSize: boolean;
+    };
   };
   const romPath = process.argv[2] ?? './sonic.sms';
   const outPath = process.argv[3] ?? 'sonic_frame.png';
   const seconds = Number(process.argv[4] ?? '3');
   const until = (process.argv[5] ?? 'either').toLowerCase(); // 'display' | 'cram' | 'either' | 'none'
   const noWait = (process.argv[6] ?? '').toLowerCase() === 'nowait';
+
+  // Parse renderer option
+  const rendererArg = process.argv.find(arg => arg.startsWith('--renderer='));
+  const rendererType = (rendererArg ? rendererArg.split('=')[1] : 'vdp').toLowerCase() as 'vdp' | 'simple';
+  const verifySprites = process.argv.includes('--verify-sprites');
 
   const rom = new Uint8Array(readFileSync(romPath));
   const cart: Cartridge = { rom };
@@ -265,6 +285,20 @@ async function main(): Promise<void> {
       traceRegs: false,
     },
   });
+
+  // Controller auto-press schedule: --press1=start:duration (seconds). Default: 2.0:0.5
+  const pressArg = process.argv.find(a => a.startsWith('--press1='));
+  let pressStart = 2.0;
+  let pressDur = 0.5;
+  if (pressArg) {
+    const val = pressArg.split('=')[1] ?? '';
+    const parts = val.split(':');
+    pressStart = parseFloat(parts[0] ?? '2.0');
+    pressDur = parseFloat(parts[1] ?? '0.5');
+    if (!isFinite(pressStart)) pressStart = 2.0;
+    if (!isFinite(pressDur)) pressDur = 0.5;
+  }
+  const pad1 = m.getController1();
 
   // Optional: force-enable CPU interrupts early (experimental), to see if VBlank IRQ handler runs
   const forceEI = (process.argv[7] ?? '').toLowerCase() === 'forceei';
@@ -318,6 +352,11 @@ async function main(): Promise<void> {
 
   let framesRan = 0;
   while (framesRan < maxFrames) {
+    // Apply auto press schedule for Button 1 (START on SMS)
+    const elapsedSec = framesRan / 60;
+    const pressed = elapsedSec >= pressStart && elapsedSec < (pressStart + pressDur);
+    pad1.setState({ button1: pressed });
+
     m.runCycles(cyclesPerFrame);
     framesRan++;
     if (!vdp.getState) continue;
@@ -393,15 +432,84 @@ async function main(): Promise<void> {
     reg1: (stX.regs[1] ?? 0) & 0xff,
   };
 
-  // Render a frame from VRAM (fallback to debug palette if CRAM is still blank)
+  // Render a frame - use VDP renderer by default, fallback to simple renderer
   const debugNoCram = stX.cramWrites === 0;
-  const rgb = renderFrame(
-    Uint8Array.from(stX.vram),
-    Uint8Array.from(stX.cram),
-    stX.nameTableBase & 0x3fff,
-    stX.bgPatternBase & 0x3fff,
-    debugNoCram
-  );
+  let rgb: Uint8Array;
+  let actualRenderer: 'vdp' | 'simple' = rendererType;
+  let vdpRendererAvailable = false;
+  
+  // Try to use VDP renderer if requested
+  if (rendererType === 'vdp' && vdp.renderFrame) {
+    const vdpRgb = vdp.renderFrame();
+    if (vdpRgb && vdpRgb.length === WIDTH * HEIGHT * 3) {
+      rgb = vdpRgb;
+      vdpRendererAvailable = true;
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`Warning: VDP renderFrame returned unexpected size (${vdpRgb?.length ?? 0}), falling back to simple renderer`);
+      rgb = renderBgOnly(
+        Uint8Array.from(stX.vram),
+        Uint8Array.from(stX.cram),
+        stX.nameTableBase & 0x3fff,
+        stX.bgPatternBase & 0x3fff,
+        debugNoCram
+      );
+      actualRenderer = 'simple';
+    }
+  } else {
+    // Use simple renderer
+    rgb = renderBgOnly(
+      Uint8Array.from(stX.vram),
+      Uint8Array.from(stX.cram),
+      stX.nameTableBase & 0x3fff,
+      stX.bgPatternBase & 0x3fff,
+      debugNoCram && rendererType === 'simple' // Only apply debugNoCram in simple mode
+    );
+    actualRenderer = 'simple';
+  }
+
+  // Verification mode: render both and compare
+  let verifyResult: Diag['verify'] | undefined;
+  if (verifySprites) {
+    const vdpAvailable = vdp.renderFrame !== undefined;
+    if (vdpAvailable) {
+      const rgbVdp = vdp.renderFrame!();
+      const rgbSimple = renderBgOnly(
+        Uint8Array.from(stX.vram),
+        Uint8Array.from(stX.cram),
+        stX.nameTableBase & 0x3fff,
+        stX.bgPatternBase & 0x3fff,
+        false // Never use debug for comparison
+      );
+      
+      let diffCount = 0;
+      const sameSize = rgbVdp.length === rgbSimple.length;
+      if (sameSize) {
+        for (let i = 0; i < rgbVdp.length; i += 3) {
+          if (rgbVdp[i] !== rgbSimple[i] || 
+              rgbVdp[i + 1] !== rgbSimple[i + 1] || 
+              rgbVdp[i + 2] !== rgbSimple[i + 2]) {
+            diffCount++;
+          }
+        }
+      }
+      
+      verifyResult = {
+        used: true,
+        available: vdpAvailable,
+        diffRGBTriplets: diffCount,
+        sameSize
+      };
+    } else {
+      verifyResult = {
+        used: true,
+        available: false,
+        diffRGBTriplets: 0,
+        sameSize: false
+      };
+    }
+  }
+
   let pngNonZero = 0;
   for (let i = 0; i < rgb.length; i++) if (rgb[i] !== 0) pngNonZero++;
   const png = encodePNG(WIDTH, HEIGHT, rgb);
@@ -414,6 +522,9 @@ async function main(): Promise<void> {
     post: postDiag,
     pngSource: beforeFallbackNonZero >= 512 || st2.cramWrites > 0 || st2.displayEnabled ? 'game' : 'fallback',
     pngNonZeroRGB: pngNonZero,
+    renderer: actualRenderer,
+    vdpRendererAvailable,
+    ...(verifyResult && { verify: verifyResult })
   };
   // Attach last PC for debugging
   const diagOut = { ...diag, lastPC: `0x${lastPC.toString(16)}` } as any;
@@ -439,11 +550,14 @@ async function main(): Promise<void> {
     bgPatternBase: stX.bgPatternBase.toString(16),
     pngNonZeroRGB: pngNonZero,
     pngSource: diag.pngSource,
+    renderer: diag.renderer,
+    vdpRendererAvailable: diag.vdpRendererAvailable,
     overrideUsed: diag.overrideUsed,
     overrideDisabled: diag.overrideDisabled,
     lastPC: `0x${lastPC.toString(16)}`,
     irqsAccepted: irqCount,
     nmisAccepted: nmiCount,
+    ...(verifyResult && { verifyDiffPixels: verifyResult.diffRGBTriplets })
   });
 
   // eslint-disable-next-line no-console

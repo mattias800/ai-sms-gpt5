@@ -67,10 +67,18 @@ export class SegaMapper implements IMapper {
     // 0xfffc-0xffff control registers
     if (a === 0xfffc) {
       // 0xFFFC is RAM control register
-      // Bit 3 (0x08) = RAM enable for slot 0
+      // Bit 3 (0x08) = RAM enable for slot 0 (mirroring 0xC000-0xDFFF at 0x0000-0x1FFF)
       // Bit 4 (0x10) = RAM enable for slot 2 (cartridge RAM)
       // Bit 2 (0x04) = BIOS disable
+      const before = this.ramInSlot0;
       this.ramInSlot0 = (v & 0x08) !== 0;
+      // Debug: log transitions for slot-0 RAM mapping to diagnose stack mirroring issues
+      try {
+        if (before !== this.ramInSlot0 && typeof process !== 'undefined' && (process as any).env && (process as any).env.DEBUG_MAPPER) {
+          // eslint-disable-next-line no-console
+          console.log(`mapper: RAM-in-slot0 ${(this.ramInSlot0 ? 'ENABLED' : 'DISABLED')} via 0xFFFC=${v.toString(16).toUpperCase().padStart(2,'0')}`);
+        }
+      } catch {}
       // 0xFFFC does NOT control bank switching
     } else if (a === 0xfffd) {
       // 0xFFFD controls bank at slot 0 (0x0000-0x3FFF)
@@ -113,6 +121,8 @@ export class SmsBus implements IBus {
   private readonly controller1: IController | null;
   private readonly controller2: IController | null;
   private readonly allowCartRam: boolean;
+  private readonly bios: Uint8Array | null = null; // Optional BIOS image
+  private biosEnabled: boolean = true; // BIOS mapped at reset until disabled via 0x3E bit2
   private lastPSG: number = 0;
   private ioControl: number = 0xff; // port 0x3F (direction/control), last write
   private memControl: number = 0x00; // port 0x3E (memory control), last write
@@ -132,6 +142,8 @@ export class SmsBus implements IBus {
   // VDP mirror write counters for 0xBE/0xBF
   private vdpDataWrites: number = 0; // 0xBE
   private vdpCtrlWrites: number = 0; // 0xBF
+  // Minimal YM2413 (FM) stub: expose presence/enable ports without audio implementation
+  private fmEnabled: boolean = false;
 
   constructor(
     cart: Cartridge,
@@ -139,7 +151,7 @@ export class SmsBus implements IBus {
     psg?: IPSG | null,
     controller1?: IController | null,
     controller2?: IController | null,
-    opts?: BusOptions | null
+    opts?: (BusOptions & { bios?: Uint8Array | null }) | null
   ) {
     this.mapper = new SegaMapper(cart.rom);
     // Pass WRAM reference to mapper for RAM mirroring
@@ -151,10 +163,17 @@ export class SmsBus implements IBus {
     this.controller1 = controller1 ?? null;
     this.controller2 = controller2 ?? null;
     this.allowCartRam = opts?.allowCartRam ?? true;
+    this.bios = opts?.bios ?? null;
+    // If no BIOS supplied, disable BIOS mapping
+    if (!this.bios) this.biosEnabled = false;
   }
 
   public read8 = (addr: number): number => {
     const a = addr & 0xffff;
+    // BIOS mapping at low addresses while enabled
+    if (this.biosEnabled && this.bios && a < this.bios.length) {
+      return this.bios[a]!;
+    }
     if (a < 0xc000) {
       // 0x0000-0xBFFF region: may include optional cart RAM mapping at 0x8000-0xBFFF
       if (a >= 0x8000 && this.cartRamEnabled) {
@@ -170,6 +189,18 @@ export class SmsBus implements IBus {
   public write8 = (addr: number, val: number): void => {
     const a = addr & 0xffff;
     const v = val & 0xff;
+    // Optional debug: log writes to specific addresses provided via DEBUG_STACK_ADDRS (comma-separated hex)
+    // This is used by tools to track stack corruption without affecting release builds
+    try {
+      const dbg = (typeof process !== 'undefined' && (process as any).env && (process as any).env.DEBUG_STACK_ADDRS) ? String((process as any).env.DEBUG_STACK_ADDRS) : '';
+      if (dbg) {
+        const set = new Set(dbg.split(',').map((s)=>parseInt(s.trim(),16)&0xffff));
+        if (set.has(a)) {
+          // eslint-disable-next-line no-console
+          console.log(`bus.write8 a=${a.toString(16).toUpperCase().padStart(4,'0')} v=${v.toString(16).toUpperCase().padStart(2,'0')}`);
+        }
+      }
+    } catch {}
     if (a >= 0xfffc) {
       this.mapper.writeControl(a, v);
       return;
@@ -205,6 +236,16 @@ export class SmsBus implements IBus {
         this.vCounterReads++;
       }
       return v;
+    }
+
+    // Minimal FM stub ports: read as if no FM chip present
+    if (p === 0xf2) {
+      // Return 0 indicates "no FM" in some detection schemes; adjust if needed
+      return 0x00;
+    }
+    if (p === 0xf0 || p === 0xf1) {
+      // FM data/status ports not implemented; return open-bus style 0xFF
+      return 0xff;
     }
 
     // Controller ports 0xDC/0xDD (active-low): default 0xFF (no buttons pressed)
@@ -265,6 +306,18 @@ export class SmsBus implements IBus {
       this.memControl = v;
       // Enable optional cartridge RAM mapping at 0x8000-0xBFFF when bit3 is set and bus allows it.
       this.cartRamEnabled = this.allowCartRam && (v & 0x08) !== 0;
+      // BIOS disable bit (bit 2). When set, unmap BIOS.
+      if (this.bios) this.biosEnabled = (v & 0x04) === 0;
+      return;
+    }
+    // Minimal FM control (0xF2): accept writes to enable/disable flag and ignore silently
+    if (p === 0xf2) {
+      // Bit 7 often used as enable; treat non-zero as attempt to enable FM, but we ignore audio path
+      this.fmEnabled = (v & 0x80) !== 0;
+      return;
+    }
+    // Ignore writes to FM data/addr ports (0xF0, 0xF1)
+    if (p === 0xf0 || p === 0xf1) {
       return;
     }
     // VDP mirrors across IO space: any port with low 6 bits 0x3e/0x3f maps to 0xbe/0xbf

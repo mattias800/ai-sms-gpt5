@@ -30,7 +30,18 @@
     "script:debug-tiles-simple": "tsx scripts/debug_tiles_simple.ts",
     "script:debug-vram": "tsx scripts/debug_vram.ts",
     "script:find-tile-data": "tsx scripts/find_tile_data.ts",
-    "script:fix-mode": "tsx scripts/fix_mode.ts"
+    "script:fix-mode": "tsx scripts/fix_mode.ts",
+    "dump:tiles": "npx tsx tools/dump_tiles_at_time.ts",
+    "trace:install": "brew install mame",
+    "trace:sms": "node scripts/mame/run-sms-trace.cjs",
+    "trace:last": "ls -1t traces/sms-*.log | head -n 1",
+    "mame:run": "node scripts/mame/run-with-timeout.cjs",
+    "compare:mame": "npx tsx tools/compare_mame_trace.ts",
+    "trace:compare": "npm run trace:sms && npm run compare:mame",
+    "focus:run": "npx tsx tools/focus_run.ts",
+    "rom:im1": "npx tsx tools/roms/make_im1_test.ts",
+    "trace:im1": "SMS_ROM=./roms/im1_test.sms TRACE_SECONDS=2 KILL_AFTER_MS=5000 npm run --silent trace:sms",
+    "compare:im1": "SMS_ROM=./roms/im1_test.sms ALIGN_PC=0038 MAX_STEPS=50 npm run --silent compare:mame"
   },
   "devDependencies": {
     "@types/node": "^20.19.11",
