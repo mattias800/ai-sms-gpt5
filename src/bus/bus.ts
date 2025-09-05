@@ -170,9 +170,11 @@ export class SmsBus implements IBus {
 
   public read8 = (addr: number): number => {
     const a = addr & 0xffff;
-    // BIOS mapping at low addresses while enabled
-    if (this.biosEnabled && this.bios && a < this.bios.length) {
-      return this.bios[a]!;
+    // BIOS mapping overlays low address space while enabled. Do NOT shadow system RAM (0xC000-0xFFFF).
+    if (this.biosEnabled && this.bios && a < 0xc000) {
+      // Some BIOS dumps may be larger than 64KB; mirror/truncate to the CPU address range as needed.
+      const idx = a % this.bios.length;
+      return this.bios[idx]!;
     }
     if (a < 0xc000) {
       // 0x0000-0xBFFF region: may include optional cart RAM mapping at 0x8000-0xBFFF

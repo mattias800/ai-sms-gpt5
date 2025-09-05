@@ -32,6 +32,7 @@
     "script:find-tile-data": "tsx scripts/find_tile_data.ts",
     "script:fix-mode": "tsx scripts/fix_mode.ts",
     "dump:tiles": "npx tsx tools/dump_tiles_at_time.ts",
+    "dump:sprites": "npx tsx tools/dump_sprites_at_time.ts",
     "trace:install": "brew install mame",
     "trace:sms": "node scripts/mame/run-sms-trace.cjs",
     "trace:last": "ls -1t traces/sms-*.log | head -n 1",
