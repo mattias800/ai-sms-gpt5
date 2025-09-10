@@ -154,8 +154,8 @@ const main = async (): Promise<void> => {
     return list;
   };
   const defaultAliases: RelocAlias[] = [
-    // Sonic SMS: ROM 0x3500..0x357F mirrors WRAM 0xC700..0xC77F (+0x9200)
-    { loA: 0x3500, hiA: 0x357F, loB: 0xC700, hiB: 0xC77F, deltaAB: (0xC700 - 0x3500) & 0xffff },
+    // Sonic SMS: ROM 0x3500..0x35FF mirrors WRAM 0xC700..0xC7FF (+0x9200)
+    { loA: 0x3500, hiA: 0x35FF, loB: 0xC700, hiB: 0xC7FF, deltaAB: (0xC700 - 0x3500) & 0xffff },
   ];
   const aliasSpec = (process.env.RELOC_ALIAS || '').trim();
   const relocAliases: RelocAlias[] = aliasSpec ? parseAliases(aliasSpec) : defaultAliases;
