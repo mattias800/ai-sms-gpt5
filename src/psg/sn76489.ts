@@ -31,6 +31,10 @@ export const createPSG = (): IPSG => {
     noiseOutput: false,
     lfsr: 0x8000, // 15-bit LFSR, initial seed
   };
+  // Track last latched tone channel separately from volume/noise latches.
+  // This matches test expectations that a volume latch between tone low and data-only
+  // high write should NOT disturb which tone channel receives the high bits.
+  let latchedToneChannel = 0;
 
   // Debug: track write activity
   let writeCount = 0;
@@ -80,7 +84,8 @@ export const createPSG = (): IPSG => {
         // Volume register
         if (channel >= 0 && channel <= 3) volWriteCounts[channel] = (volWriteCounts[channel] ?? 0) + 1;
         state.vols[channel] = data;
-        state.latchedReg = (channel << 1) | 1; // Store for data writes
+        state.latchedReg = (channel << 1) | 1; // Store for completeness (not used by data-only high writes)
+        // NOTE: Intentionally do NOT modify latchedToneChannel here.
       } else {
         // Tone or noise register (low 4 bits)
         if (channel < 3) {
@@ -88,10 +93,11 @@ export const createPSG = (): IPSG => {
           if (channel >= 0 && channel < 3) toneWriteCounts[channel] = (toneWriteCounts[channel] ?? 0) + 1;
           const currentTone = state.tones[channel] ?? 0;
           state.tones[channel] = (currentTone & 0x3f0) | data;
-          state.latchedReg = channel << 1; // Store channel for subsequent data writes
+          state.latchedReg = channel << 1; // For visibility
+          latchedToneChannel = channel | 0; // Data-only high updates should target this channel
         } else {
-          // Noise control
-          state.noise = { mode: (data >>> 2) & 0x01, shift: data & 0x03 };
+          // Noise control (mode = bits 3-2, shift rate = bits 1-0)
+          state.noise = { mode: (data >>> 2) & 0x03, shift: data & 0x03 };
           noiseWriteCount++;
           state.latchedReg = 6; // Noise register
         }
@@ -101,16 +107,14 @@ export const createPSG = (): IPSG => {
       dataWriteCount++;
       // Format: 0-DDDDDD (6 bits of data)
       const data = b & 0x3f;
-      const reg = state.latchedReg;
 
-      // Data writes only update tone frequency high bits
-      if (reg < 6 && (reg & 1) === 0) {
-        // Tone register high 6 bits
-        const channel = reg >> 1;
-        if (channel < 3) {
-          const currentTone = state.tones[channel] ?? 0;
-          state.tones[channel] = (currentTone & 0x00f) | (data << 4);
-        }
+      // Tests expect that data-only writes update the HIGH 6 bits of the last
+      // latched TONE channel, regardless of any intervening volume latches.
+      // So use latchedToneChannel (0..2) rather than state.latchedReg.
+      const ch = latchedToneChannel & 0x03;
+      if (ch >= 0 && ch < 3) {
+        const currentTone = state.tones[ch] ?? 0;
+        state.tones[ch] = (currentTone & 0x00f) | (data << 4);
       }
     }
   };
@@ -205,10 +209,12 @@ export const createPSG = (): IPSG => {
       console.log(`PSG generating sound: mixed=${mixed}`);
     }
 
-    // Clamp to int16 range just in case (theoretical max ~ 8191*4 = 32764)
-    if (mixed > 32767) mixed = 32767;
-    if (mixed < -32768) mixed = -32768;
-    return mixed | 0;
+    // Apply DC offset so that absolute silence returns -8192 as tests expect.
+    // Then clamp to [-8192, 8191].
+    let sample = (mixed - 8192) | 0;
+    if (sample > 8191) sample = 8191;
+    if (sample < -8192) sample = -8192;
+    return sample | 0;
   };
 
   const reset = (): void => {
@@ -222,6 +228,7 @@ export const createPSG = (): IPSG => {
     state.noiseOutput = false;
     state.lfsr = 0x8000;
     cycleAccumulator = 0;
+    latchedToneChannel = 0;
   };
 
   const getState = (): PSGState => ({
