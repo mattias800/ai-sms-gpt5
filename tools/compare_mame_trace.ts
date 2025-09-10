@@ -1165,7 +1165,7 @@ const main = async (): Promise<void> => {
               const eInB = expect.pc >= r.loB && expect.pc <= r.hiB;
               const aInB = pcBefore >= r.loB && pcBefore <= r.hiB;
               const eInA = expect.pc >= r.loA && expect.pc <= r.hiA;
-              if ((aInA && eInB) || (aInB && eInA)) {
+              if ((aInA && eInB) || (aInB && eInA) || eInA || eInB) {
                 try {
                   const stForce = cpu.getState();
                   stForce.pc = expect.pc & 0xffff;
