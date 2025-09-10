@@ -71,6 +71,7 @@ export interface Z80DebugHooks {
   onPush16?: (spBefore: number, value: number, pcAtPush: number) => void;
   onPop16?: (spBefore: number, value: number, pcAtPop: number) => void;
   onMemWrite?: (addr: number, val: number, pcAtWrite: number) => void;
+  onIOWrite?: (port: number, val: number, pcAtWrite: number) => void;
 }
 
 export interface CreateZ80Options {
@@ -138,6 +139,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
   };
   const writeIO8 = (port: number, val: number): void => {
     bus.writeIO8(port, val);
+    if (opts.debugHooks?.onIOWrite) opts.debugHooks.onIOWrite(port & 0xff, val & 0xff, s.pc & 0xffff);
     addIoPenalty(port, true);
   };
 

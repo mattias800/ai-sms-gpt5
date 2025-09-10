@@ -527,7 +527,16 @@ async function main(): Promise<void> {
     ...(verifyResult && { verify: verifyResult })
   };
   // Attach last PC for debugging
-  const diagOut = { ...diag, lastPC: `0x${lastPC.toString(16)}` } as any;
+  const diagOut = { 
+    ...diag, 
+    lastPC: `0x${lastPC.toString(16)}`,
+    prioMaskPixels: (stX as any).prioMaskPixels ?? 0,
+    spritePixelsDrawn: (stX as any).spritePixelsDrawn ?? 0,
+    spritePixelsMaskedByPriority: (stX as any).spritePixelsMaskedByPriority ?? 0,
+    spriteLinesSkippedByLimit: (stX as any).spriteLinesSkippedByLimit ?? 0,
+    perLineLimitHitLines: (stX as any).perLineLimitHitLines ?? 0,
+    activeSprites: (stX as any).activeSprites ?? 0,
+  } as any;
   writeFileSync(outPath + '.json', Buffer.from(JSON.stringify(diagOut, null, 2)));
 
   // eslint-disable-next-line no-console
@@ -557,7 +566,13 @@ async function main(): Promise<void> {
     lastPC: `0x${lastPC.toString(16)}`,
     irqsAccepted: irqCount,
     nmisAccepted: nmiCount,
-    ...(verifyResult && { verifyDiffPixels: verifyResult.diffRGBTriplets })
+    ...(verifyResult && { verifyDiffPixels: verifyResult.diffRGBTriplets }),
+    prioMaskPixels: (stX as any).prioMaskPixels ?? 0,
+    spritePixelsDrawn: (stX as any).spritePixelsDrawn ?? 0,
+    spritePixelsMaskedByPriority: (stX as any).spritePixelsMaskedByPriority ?? 0,
+    spriteLinesSkippedByLimit: (stX as any).spriteLinesSkippedByLimit ?? 0,
+    perLineLimitHitLines: (stX as any).perLineLimitHitLines ?? 0,
+    activeSprites: (stX as any).activeSprites ?? 0,
   });
 
   // eslint-disable-next-line no-console

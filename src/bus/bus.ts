@@ -170,10 +170,9 @@ export class SmsBus implements IBus {
 
   public read8 = (addr: number): number => {
     const a = addr & 0xffff;
-    // BIOS mapping overlays low address space while enabled. Do NOT shadow system RAM (0xC000-0xFFFF).
-    if (this.biosEnabled && this.bios && a < 0xc000) {
-      // Some BIOS dumps may be larger than 64KB; mirror/truncate to the CPU address range as needed.
-      const idx = a % this.bios.length;
+    // BIOS overlay typically maps only the first 16KB (0x0000-0x3FFF). Do NOT shadow system RAM (0xC000-0xFFFF).
+    if (this.biosEnabled && this.bios && a < 0x4000) {
+      const idx = a % this.bios.length; // mirror BIOS over its own length
       return this.bios[idx]!;
     }
     if (a < 0xc000) {
@@ -204,6 +203,27 @@ export class SmsBus implements IBus {
       }
     } catch {}
     if (a >= 0xfffc) {
+      try {
+        if ((process as any).env && (process as any).env.DEBUG_IO_LOG && ((process as any).env.DEBUG_IO_LOG as string) !== '0') {
+          // eslint-disable-next-line no-console
+          console.log(`mem-dbg WRITE ${a.toString(16).toUpperCase().padStart(4,'0')} <= ${v.toString(16).toUpperCase().padStart(2,'0')}`);
+        }
+      } catch {}
+      // Some SMS BIOS variants also mirror memory-control bits via 0xFFFC.
+      // Honor bit2 here as a BIOS-disable hint to better match observed boot flows in traces.
+      if (a === 0xfffc && this.bios) {
+        const prev = this.biosEnabled;
+        // One-way BIOS disable mirror: if bit2 set, disable overlay; clearing bit2 does NOT re-enable
+        if ((v & 0x04) !== 0) this.biosEnabled = false;
+        if (prev !== this.biosEnabled) {
+          try {
+            if ((process as any).env && (process as any).env.DEBUG_IO_LOG && ((process as any).env.DEBUG_IO_LOG as string) !== '0') {
+              // eslint-disable-next-line no-console
+              console.log(`bios-mirror: 0xFFFC=${v.toString(16).toUpperCase().padStart(2,'0')} -> biosEnabled=${this.biosEnabled?1:0}`);
+            }
+          } catch {}
+        }
+      }
       this.mapper.writeControl(a, v);
       return;
     }
@@ -294,6 +314,7 @@ export class SmsBus implements IBus {
     }
     // I/O control and memory control ports
     if (p === 0x3f) {
+      const prev = this.ioControl & 0xff;
       this.ioControl = v;
       // Lower 6 bits: direction mask for controller lines (1=output)
       this.ioDirMask = v & 0x3f;
@@ -302,14 +323,30 @@ export class SmsBus implements IBus {
       this.thBLatch = v & 0x80 ? 1 : 0;
       // Keep generic lower-line outputs default pulled high unless explicitly modeled elsewhere
       this.ioOutLatch |= 0x3f;
+      try {
+        if ((process as any).env && (process as any).env.DEBUG_IO_LOG && ((process as any).env.DEBUG_IO_LOG as string) !== '0') {
+          // eslint-disable-next-line no-console
+          console.log(`io-dbg OUT port=3F val=${v.toString(16).toUpperCase().padStart(2,'0')} prev=${prev.toString(16).toUpperCase().padStart(2,'0')}`);
+        }
+      } catch {}
       return;
     }
     if (p === 0x3e) {
+      const prevMC = this.memControl & 0xff;
+      const prevBios = this.biosEnabled;
       this.memControl = v;
       // Enable optional cartridge RAM mapping at 0x8000-0xBFFF when bit3 is set and bus allows it.
       this.cartRamEnabled = this.allowCartRam && (v & 0x08) !== 0;
-      // BIOS disable bit (bit 2). When set, unmap BIOS.
-      if (this.bios) this.biosEnabled = (v & 0x04) === 0;
+      // BIOS disable bit (bit 2). One-way: setting disables overlay; clearing does NOT re-enable.
+      if (this.bios && (v & 0x04) !== 0) this.biosEnabled = false;
+      try {
+        if ((process as any).env && (process as any).env.DEBUG_IO_LOG && ((process as any).env.DEBUG_IO_LOG as string) !== '0') {
+          // eslint-disable-next-line no-console
+          console.log(
+            `io-dbg OUT port=3E val=${v.toString(16).toUpperCase().padStart(2,'0')} memCtrl:${prevMC.toString(16).toUpperCase().padStart(2,'0')}->${this.memControl.toString(16).toUpperCase().padStart(2,'0')} bios:${prevBios?1:0}->${this.biosEnabled?1:0} cartRAM:${this.cartRamEnabled?1:0}`
+          );
+        }
+      } catch {}
       return;
     }
     // Minimal FM control (0xF2): accept writes to enable/disable flag and ignore silently

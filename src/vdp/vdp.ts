@@ -24,6 +24,13 @@ export interface VdpPublicState {
   lastCramValue: number;
   nonZeroVramWrites: number;
   lastNonZeroVramAddr: number;
+  // Instrumentation (optional)
+  prioMaskPixels?: number;
+  spritePixelsDrawn?: number;
+  spritePixelsMaskedByPriority?: number;
+  spriteLinesSkippedByLimit?: number;
+  perLineLimitHitLines?: number;
+  activeSprites?: number;
 }
 
 export interface IVDP {
@@ -85,6 +92,13 @@ interface VdpState {
   // extra debug
   nonZeroVramWrites: number;
   lastNonZeroVramAddr: number;
+  // instrumentation (last rendered frame)
+  lastPrioMaskPixels: number;
+  lastSpritePixelsDrawn: number;
+  lastSpritePixelsMaskedByPriority: number;
+  lastSpriteLinesSkippedByLimit: number;
+  lastPerLineLimitHitLines: number;
+  lastActiveSprites: number;
 }
 
 export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
@@ -102,7 +116,22 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     // Also snap near 0x03 to satisfy early-line gating loops
     snap03Window: 8,
   };
-  const cfg: VdpTimingConfig = { ...defaults, ...(timing ?? {}) };
+  // Allow environment overrides for timing during tooling/verification
+  let envOverrides: Partial<VdpTimingConfig> = {};
+  try {
+    const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+    if (env) {
+      if (env.VDP_CYCLES_PER_LINE) envOverrides.cyclesPerLine = parseInt(env.VDP_CYCLES_PER_LINE, 10) | 0;
+      if (env.VDP_LINES_PER_FRAME) envOverrides.linesPerFrame = parseInt(env.VDP_LINES_PER_FRAME, 10) | 0;
+      if (env.VDP_VBLANK_START) envOverrides.vblankStartLine = parseInt(env.VDP_VBLANK_START, 10) | 0;
+      if (env.VDP_FRONT_PORCH) envOverrides.frontPorchCycles = parseInt(env.VDP_FRONT_PORCH, 10) | 0;
+      if (env.VDP_HBLANK_WIDTH) envOverrides.hblankWidthCycles = parseInt(env.VDP_HBLANK_WIDTH, 10) | 0;
+      if (env.VDP_HC_QUANT) envOverrides.hcQuantStep = parseInt(env.VDP_HC_QUANT, 10) | 0;
+      if (env.VDP_SNAP_B0) envOverrides.snapB0Window = parseInt(env.VDP_SNAP_B0, 10) | 0;
+      if (env.VDP_SNAP_03) envOverrides.snap03Window = parseInt(env.VDP_SNAP_03, 10) | 0;
+    }
+  } catch {}
+  const cfg: VdpTimingConfig = { ...defaults, ...(timing ?? {}), ...envOverrides };
 
   const s: VdpState = {
     vram: new Uint8Array(0x4000),
@@ -135,6 +164,13 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     lastCramValue: 0,
     nonZeroVramWrites: 0,
     lastNonZeroVramAddr: -1,
+    // instrumentation
+    lastPrioMaskPixels: 0,
+    lastSpritePixelsDrawn: 0,
+    lastSpritePixelsMaskedByPriority: 0,
+    lastSpriteLinesSkippedByLimit: 0,
+    lastPerLineLimitHitLines: 0,
+    lastActiveSprites: 0,
   };
   // Some titles rely on autoincrement register; default to 1
   s.regs[15] = 1;
@@ -165,13 +201,15 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
 
         s.regs[reg] = value;
         if (reg === 1) {
-          // VBlank IRQ enable is bit 5 of reg1. If enabling during active VBlank, assert immediately.
+          // VBlank IRQ enable is bit 5 of reg1.
+          // Accurate behavior: enabling during active vblank should only assert immediately if the VBlank flag (status bit 7) is currently set.
+          // If the status flag has been cleared by a status port read, the IRQ line should not re-assert until the next vblank start.
           const irqEnabled = (value & 0x20) !== 0;
           if (!irqEnabled) {
             s.irqVLine = false;
           } else {
-            // If we are in vblank now OR the vblank flag is already set, assert immediately
-            if (s.line >= s.vblankStartLine || (s.status & 0x80) !== 0) s.irqVLine = true;
+            // Assert immediately only if the vblank flag is set at this moment
+            if ((s.status & 0x80) !== 0) s.irqVLine = true;
           }
         } else if (reg === 8) {
           // Capture per-line H scroll value (approximate) at the current line
@@ -361,6 +399,12 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       lastCramValue: s.lastCramValue & 0x3f,
       nonZeroVramWrites: s.nonZeroVramWrites | 0,
       lastNonZeroVramAddr: s.lastNonZeroVramAddr | 0,
+      prioMaskPixels: s.lastPrioMaskPixels | 0,
+      spritePixelsDrawn: s.lastSpritePixelsDrawn | 0,
+      spritePixelsMaskedByPriority: s.lastSpritePixelsMaskedByPriority | 0,
+      spriteLinesSkippedByLimit: s.lastSpriteLinesSkippedByLimit | 0,
+      perLineLimitHitLines: s.lastPerLineLimitHitLines | 0,
+      activeSprites: s.lastActiveSprites | 0,
     };
   };
 
@@ -369,6 +413,12 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     const frameBuffer = new Uint8Array(256 * 192 * 3);
     // Priority mask: 1 where BG tile has priority set AND BG pixel color != 0
     const prioMask = new Uint8Array(256 * 192);
+    // Instrumentation counters (reset per frame)
+    let prioMaskPixels = 0;
+    let spritePixelsDrawn = 0;
+    let spritePixelsMaskedByPriority = 0;
+    let spriteLinesSkippedByLimit = 0;
+    let perLineLimitHitLines = 0;
 
     // Check if display is enabled
     const displayEnabled = ((s.regs[1] ?? 0) & 0x40) !== 0;
@@ -479,7 +529,11 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         frameBuffer[fbIdx + 1] = g;
         frameBuffer[fbIdx + 2] = b;
         // Record priority mask only when non-zero BG pixel
-        if (priority && colorIdx !== 0) prioMask[screenY * 256 + screenX] = 1;
+        if (priority && colorIdx !== 0) {
+          const idx = screenY * 256 + screenX;
+          if (prioMask[idx] === 0) prioMaskPixels++;
+          prioMask[idx] = 1;
+        }
       }
     }
 
@@ -516,6 +570,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         }
       }
     }
+    // Count lines where 8-sprite limit was hit
+    for (let ln = 0; ln < 192; ln++) if (perLineCount[ln] >= 8) perLineLimitHitLines++;
 
     // Process sprites in reverse order (sprite 0 has highest priority)
     for (let spriteNum = activeSprites - 1; spriteNum >= 0; spriteNum--) {
@@ -552,7 +608,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         if (screenY < 0) continue; // Off top of screen
 
         // If this sprite is not allowed on this scanline (due to 8-sprite limit), skip this line for this sprite
-        if (!allowed[screenY][spriteNum]) continue;
+        if (!allowed[screenY][spriteNum]) { spriteLinesSkippedByLimit++; continue; }
         // We no longer need to count here, it was done in the pre-pass
         let drewAnyPixelThisLine = false;
 
@@ -597,7 +653,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           }
 
           // If BG priority mask is set here, skip drawing sprite pixel (BG in front)
-          if (prioMask[screenY * 256 + screenX]) continue;
+          if (prioMask[screenY * 256 + screenX]) { spritePixelsMaskedByPriority++; continue; }
 
           // Sprites always use the sprite palette (colors 16-31)
           const fbIdx = (screenY * 256 + screenX) * 3;
@@ -606,10 +662,19 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
           frameBuffer[fbIdx] = r;
           frameBuffer[fbIdx + 1] = g;
           frameBuffer[fbIdx + 2] = b;
+          spritePixelsDrawn++;
           // Continue drawing remaining pixels; limit enforced per-scanline per-sprite
         }
       }
     }
+
+    // Publish instrumentation for this frame
+    s.lastPrioMaskPixels = prioMaskPixels | 0;
+    s.lastSpritePixelsDrawn = spritePixelsDrawn | 0;
+    s.lastSpritePixelsMaskedByPriority = spritePixelsMaskedByPriority | 0;
+    s.lastSpriteLinesSkippedByLimit = spriteLinesSkippedByLimit | 0;
+    s.lastPerLineLimitHitLines = perLineLimitHitLines | 0;
+    s.lastActiveSprites = activeSprites | 0;
 
     return frameBuffer;
   };
