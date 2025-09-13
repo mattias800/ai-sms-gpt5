@@ -7,6 +7,7 @@ interface UseEmulatorProps {
   romData: Uint8Array | null;
   isPaused: boolean;
   isMuted: boolean;
+  overlayEnabled: boolean;
   onFpsUpdate: (fps: number) => void;
   onStatusUpdate: (status: string) => void;
 }
@@ -20,6 +21,7 @@ export const useEmulator = ({
   romData,
   isPaused,
   isMuted,
+  overlayEnabled,
   onFpsUpdate,
   onStatusUpdate,
 }: UseEmulatorProps): EmulatorInstance | null => {
@@ -45,7 +47,7 @@ export const useEmulator = ({
 
     try {
       const cartridge = { rom: romData };
-      const machine = createMachine({ cart: cartridge });
+      const machine = createMachine({ cart: cartridge, fastBlocks: true });
       machineRef.current = machine;
 
       // Initialize audio context
@@ -73,8 +75,10 @@ export const useEmulator = ({
 
           for (let i = 0; i < output.length; i++) {
             if (buffer.length > 0) {
-              output[i] = buffer.shift()! / 32768;
+              // Buffer contains the mixed (DC-free) integer sample ~[-32764, +32764]
+              output[i] = (buffer.shift()! / 32768);
             } else {
+              // Underflow: output silence, avoid clicks
               output[i] = 0;
             }
           }
@@ -212,48 +216,112 @@ export const useEmulator = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Optional overlay canvas for debug drawing
+    const overlayCanvas = document.getElementById('overlay-canvas') as HTMLCanvasElement | null;
+    const overlayCtx = overlayCanvas?.getContext('2d') ?? null;
+
     const imageData = ctx.createImageData(256, 192);
     let running = true;
 
-    const runFrame = () => {
+    // Time-based pacing to avoid tying emulation speed to display refresh rate (e.g., 120/144Hz)
+    const timingRef = { accumMs: 0, lastTs: performance.now() };
+
+    const runLoop = () => {
       if (!running || !machineRef.current) return;
 
-      animationFrameRef.current = requestAnimationFrame(runFrame);
+      animationFrameRef.current = requestAnimationFrame(runLoop);
 
       try {
         const machine = machineRef.current;
 
-        // Run one frame of emulation interleaved with audio sampling
+        // Derive hardware timing
         const vdpState = machine.getVDP().getState ? machine.getVDP().getState?.() : undefined;
         const cyclesPerLine = vdpState?.cyclesPerLine ?? 228;
         const linesPerFrame = vdpState?.linesPerFrame ?? 262;
         const cyclesPerFrame = cyclesPerLine * linesPerFrame;
 
-        const samplesPerFrame = Math.floor(44100 / 60); // ~735
-        const cyclesPerSample = Math.max(1, Math.floor(cyclesPerFrame / samplesPerFrame)); // ~81
+        // NTSC ≈60Hz (262 lines), PAL ≈50Hz (313 lines). Fallback to 60.
+        const targetFps = linesPerFrame >= 300 ? 50 : 60;
+        const msPerFrame = 1000 / targetFps;
 
-        // Limit buffer size to prevent lag (keep ~100ms of buffered audio)
-        const buffer = sampleBufferRef.current;
+        const now = performance.now();
+        let dt = now - timingRef.lastTs;
+        if (dt < 0) dt = 0;
+        if (dt > 250) dt = 250; // clamp to avoid huge jumps after tab switches
+        timingRef.lastTs = now;
+        timingRef.accumMs += dt;
+
+        // Produce audio at the device sample rate
+        const sampleRate = audioContextRef.current?.sampleRate ?? 44100;
+        const samplesPerFrame = Math.max(1, Math.floor(sampleRate / targetFps));
+        const cyclesPerSample = Math.max(1, Math.floor(cyclesPerFrame / samplesPerFrame));
         const wantAudio = !!audioContextRef.current && !isMuted;
+        const buffer = sampleBufferRef.current;
+        const maxBufferedSamples = Math.floor(sampleRate * 0.1); // ~100ms cap
 
-        for (let i = 0; i < samplesPerFrame; i++) {
-          machine.runCycles(cyclesPerSample);
-          if (wantAudio) {
-            const s = machine.getPSG().getSample();
-            if (buffer.length < 4410) buffer.push(s);
+        // Run as many whole frames as the accumulated time allows, with a safety cap
+        const maxFramesPerTick = 5;
+        let framesRan = 0;
+        while (timingRef.accumMs >= msPerFrame && framesRan < maxFramesPerTick) {
+          // Interleave CPU cycles with audio sampling for this emulated frame
+          for (let i = 0; i < samplesPerFrame; i++) {
+            machine.runCycles(cyclesPerSample);
+            if (wantAudio) {
+              // Convert from internal sample (range ~[-8192,8191], silence=-8192)
+              // to a mixed value centered around 0 by removing the DC offset.
+              const s = machine.getPSG().getSample();
+              const mixed = (s + 8192) | 0; // remove DC offset -> ~[-?, +32764]
+              if (buffer.length < maxBufferedSamples) buffer.push(mixed);
+            }
+          }
+          // Run leftover cycles to complete the frame exactly
+          const leftover = cyclesPerFrame - cyclesPerSample * samplesPerFrame;
+          if (leftover > 0) machine.runCycles(leftover);
+
+          timingRef.accumMs -= msPerFrame;
+          framesRan++;
+
+          // FPS accounting per emulated frame
+          const fpsInfo = fpsInfoRef.current;
+          fpsInfo.frameCount++;
+          const tNow = performance.now();
+          const elapsed = tNow - fpsInfo.lastTime;
+          if (elapsed >= 1000) {
+            const fps = Math.round((fpsInfo.frameCount * 1000) / elapsed);
+            onFpsUpdate(fps);
+            // Also publish sprite stats into status bar for quick diagnostics
+            try {
+              const vs = machine.getVDP().getState?.();
+              const dbg = machine.getDebugStats?.();
+              if (vs) {
+                const r1 = vs.regs?.[1] ?? 0;
+                const r0 = vs.regs?.[0] ?? 0;
+                const vblank = (vs.status & 0x80) !== 0 ? 1 : 0;
+                onStatusUpdate(
+                  `Sprites: drawn=${vs.spritePixelsDrawn ?? 0} masked=${vs.spritePixelsMaskedByPriority ?? 0} ` +
+                  `8/line=${vs.perLineLimitHitLines ?? 0} active=${vs.activeSprites ?? 0} ` +
+                  `IRQs:${dbg?.irqAccepted ?? 0} ` +
+                  `VDP: line=${vs.line} VB=${vblank} R1=${(r1).toString(16).padStart(2,'0')} R0=${(r0).toString(16).padStart(2,'0')} ` +
+                  (typeof vs.lineCounter === 'number' ? `R10=${vs.lineCounter} ` : '') +
+                  (typeof (vs as any).vblankCount === 'number' ? `VBcnt=${(vs as any).vblankCount} ` : '') +
+                  (typeof (vs as any).statusReadCount === 'number' ? `SR=${(vs as any).statusReadCount} ` : '') +
+                  (typeof (vs as any).irqAssertCount === 'number' ? `IRQset=${(vs as any).irqAssertCount} ` : '') +
+                  (dbg ? `CPU: IFF1=${dbg.iff1?1:0} IFF2=${dbg.iff2?1:0} IM=${dbg.im} HALT=${dbg.halted?1:0} PC=${(dbg.pc>>>0).toString(16).padStart(4,'0')} EI=${dbg.eiCount??0} DI=${dbg.diCount??0}` +
+                    (dbg.lastEiPc ? ` lastEI=${(dbg.lastEiPc>>>0).toString(16).padStart(4,'0')}` : '') +
+                    (dbg.lastDiPc ? ` lastDI=${(dbg.lastDiPc>>>0).toString(16).padStart(4,'0')}` : '') : '')
+                );
+              }
+            } catch {}
+            fpsInfo.frameCount = 0;
+            fpsInfo.lastTime = tNow;
           }
         }
-        // Run any leftover cycles to complete the frame
-        const leftover = cyclesPerFrame - cyclesPerSample * samplesPerFrame;
-        if (leftover > 0) machine.runCycles(leftover);
 
-        // Render frame once per RAF
+        // Render latest frame once per RAF
         const vdp = machine.getVDP();
         if (vdp.renderFrame) {
           const frameBuffer = vdp.renderFrame();
           const data = imageData.data;
-
-          // Copy RGB data to canvas
           for (let i = 0; i < 256 * 192; i++) {
             const srcIdx = i * 3;
             const dstIdx = i * 4;
@@ -262,21 +330,42 @@ export const useEmulator = ({
             data[dstIdx + 2] = frameBuffer[srcIdx + 2] ?? 0;
             data[dstIdx + 3] = 255;
           }
-
           ctx.putImageData(imageData, 0, 0);
-        }
 
-        // Update FPS
-        const fpsInfo = fpsInfoRef.current;
-        fpsInfo.frameCount++;
-        const now = performance.now();
-        const elapsed = now - fpsInfo.lastTime;
-
-        if (elapsed >= 1000) {
-          const fps = Math.round(fpsInfo.frameCount * 1000 / elapsed);
-          onFpsUpdate(fps);
-          fpsInfo.frameCount = 0;
-          fpsInfo.lastTime = now;
+          // Draw overlay if present
+          if (overlayCtx && typeof vdp.getState === 'function') {
+            // Show/hide overlay canvas based on toggle
+            overlayCtx.canvas.style.visibility = overlayEnabled ? 'visible' : 'hidden';
+            overlayCtx.clearRect(0, 0, 256, 192);
+            if (overlayEnabled) {
+              const vs = vdp.getState();
+              const dbg = vs.spriteDebug ?? [];
+              // Style config base
+              overlayCtx.lineWidth = 1;
+              // Draw bounding boxes for all active SAT entries with classification colors
+              for (const s of dbg) {
+                if (!s) continue;
+                // Choose color by state
+                let color = 'rgba(255, 0, 0, 0.9)'; // red: drew pixels
+                if (s.drawnPixels > 0) color = 'rgba(255, 0, 0, 0.9)';
+                else if (s.maskedPixels > 0) color = 'rgba(255, 165, 0, 0.9)'; // orange: masked by BG priority
+                else if (s.offscreen) color = 'rgba(0, 128, 255, 0.8)'; // blue: offscreen
+                else if (s.terminated) color = 'rgba(128, 128, 128, 0.8)'; // gray: after terminator
+                else color = 'rgba(255, 255, 0, 0.9)'; // yellow: present but drew nothing (e.g., limited by 8/line)
+                overlayCtx.strokeStyle = color;
+                // Clamp box to screen
+                const x = Math.max(0, Math.min(255, s.x));
+                const y = Math.max(0, Math.min(191, s.y));
+                const w = Math.max(0, Math.min(256 - x, s.width));
+                const h = Math.max(0, Math.min(192 - y, s.height));
+                overlayCtx.strokeRect(x + 0.5, y + 0.5, w, h);
+                // draw sprite index label
+                overlayCtx.font = '10px monospace';
+                overlayCtx.fillStyle = 'rgba(255,255,255,0.8)';
+                overlayCtx.fillText(String(s.index), x + 1, y + 9);
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('Emulation error:', error);
@@ -285,7 +374,7 @@ export const useEmulator = ({
       }
     };
 
-    runFrame();
+    runLoop();
 
     return () => {
       running = false;
@@ -293,7 +382,7 @@ export const useEmulator = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [romData, isPaused, isMuted, canvasRef, onFpsUpdate, onStatusUpdate]);
+  }, [romData, isPaused, isMuted, overlayEnabled, canvasRef, onFpsUpdate, onStatusUpdate]);
 
   const reset = useCallback(() => {
     if (machineRef.current) {

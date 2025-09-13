@@ -347,6 +347,9 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     // Make last instruction's wait-cycle count visible and reset accumulator for this instruction
     lastWaitCycles = curWaitCycles;
     curWaitCycles = 0;
+    // Capture whether an IRQ was just requested since the previous step, then clear the flag
+    const irqJustRequested = irqNewSinceLastStep === true;
+    irqNewSinceLastStep = false;
 
     // Trace helpers
     const tracer = typeof opts.onTrace === 'function' ? opts.onTrace : null;
@@ -406,7 +409,9 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       iff1Pending = false;
       eiMaskOne = true;
     }
-    const blockIRQThisStep = eiMaskOne;
+    let blockIRQThisStep = eiMaskOne;
+    // If we are halted, do not block the next IRQ by EI mask-one — real Z80 wakes from HALT on IRQ immediately after EI.
+    if (s.halted) blockIRQThisStep = false;
     // Clear the mask so it only blocks this single step
     eiMaskOne = false;
 
@@ -414,14 +419,17 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     if (s.halted) {
       if (pendingNMI) {
         pendingNMI = false;
+        // On NMI, IFF1 is reset; IFF2 retains previous IFF1 (not modeled exactly here, but leave IFF2 unchanged)
         s.iff1 = false; // mask maskable IRQs
         s.halted = false;
         push16(s.pc);
         s.pc = 0x0066;
         return mkRes(11, false, true);
       }
-      if (pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep) {
+      // While halted, allow maskable IRQ acceptance whenever IFF1 is set, regardless of EI mask-one gating.
+      if (pendingIRQ && s.iff1) {
         pendingIRQ = false;
+        // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
         s.iff1 = false;
         s.halted = false;
         push16(s.pc);
@@ -509,9 +517,10 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       return mkRes(11, false, true);
     }
 
-    // Handle maskable IRQ when enabled and not in EI delay; defer if next op is HALT
-    if (nextOp !== 0x76 && pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep) {
+    // Handle maskable IRQ when enabled and not in EI delay; defer if next op is HALT (HALT executes first, IRQ on next step)
+    if (pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep && (nextOp !== 0x76 || irqJustRequested)) {
       pendingIRQ = false;
+      // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
       s.iff1 = false;
       s.halted = false;
       push16(s.pc);
@@ -852,9 +861,15 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         return mkRes(8, false, false);
       }
       // RETN (ED 45) or RETI (ED 4D)
-      if (sub === 0x45 || sub === 0x4d) {
+      if (sub === 0x45) {
         s.pc = pop16();
-        // For RETN, IFF1 := IFF2; for RETI, identical on Z80
+        // RETN: IFF1 := IFF2
+        s.iff1 = s.iff2;
+        return mkRes(14, false, false);
+      }
+      if (sub === 0x4d) {
+        s.pc = pop16();
+        // RETI: same as RETN on Z80 for IFF restore
         s.iff1 = s.iff2;
         return mkRes(14, false, false);
       }
@@ -2263,8 +2278,10 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     s = { ...st };
   };
 
+  let irqNewSinceLastStep = false;
   const requestIRQ = (): void => {
     pendingIRQ = true;
+    irqNewSinceLastStep = true;
   };
   const requestNMI = (): void => {
     pendingNMI = true;

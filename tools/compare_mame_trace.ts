@@ -57,6 +57,10 @@ const main = async (): Promise<void> => {
   const ENV_SKIP = process.env.SKIP_LINES ? parseInt(process.env.SKIP_LINES, 10) : 0;
   const ENV_ALIGN_PC_HEX = process.env.ALIGN_PC || null;
   const ENV_AUTO_ALIGN = process.env.AUTO_ALIGN === '1' || process.env.AUTO_ALIGN === 'true';
+  // Optional global kill timer to abort long runs
+  const ENV_KILL_MS = process.env.KILL_AFTER_MS ? parseInt(process.env.KILL_AFTER_MS, 10) : 0;
+  const START_MS = Date.now();
+  const shouldAbort = (): boolean => (ENV_KILL_MS > 0) && ((Date.now() - START_MS) >= ENV_KILL_MS);
 
   if (!ENV_ROM) {
     console.error('ERROR: Set SMS_ROM to your .sms ROM path.');
@@ -342,6 +346,7 @@ const main = async (): Promise<void> => {
     }
     let prevText = disasmAt(curPC);
     while (steps < limit) {
+      if (shouldAbort()) { console.log(`Aborting (strict) after ${Date.now() - START_MS} ms due to KILL_AFTER_MS=${ENV_KILL_MS}`); process.exit(124); }
       const beforePC = curPC;
       const beforeText = disasmAt(beforePC);
       const sBefore = cpu.getState();
@@ -525,6 +530,7 @@ const main = async (): Promise<void> => {
   };
 
   while (consumed < limit) {
+    if (shouldAbort()) { console.log(`Aborting after ${Date.now() - START_MS} ms due to KILL_AFTER_MS=${ENV_KILL_MS}`); process.exit(124); }
     // Enter focus when expected PC hits FOCUS_PC
     if (FOCUS_PC !== null && !inFocus) {
       const nextPc = mameLines[startIdx + consumed]!.pc;
@@ -1024,6 +1030,7 @@ const main = async (): Promise<void> => {
         : ((inDecOrLoop(pc) || inVdpFrameLoop(pc) || isShortDjNzPoll(pc) || isShortCondJrBack(pc)) ? BLOCK_SEEK_LIMIT : SEEK_LIMIT);
       let seekLimitDynamic = effLimitFor(pcBefore);
       while (seekSteps < seekLimitDynamic && !pcsEqual(pcBefore, expect.pc)) {
+      if (shouldAbort()) { console.log(`Aborting (seek) after ${Date.now() - START_MS} ms due to KILL_AFTER_MS=${ENV_KILL_MS}`); process.exit(124); }
       const sBefore = cpu.getState();
       const beforePCSeek = sBefore.pc & 0xffff;
       // Optional hack: if stuck in the IY wait loop and allowed, force (IY+0) bit0 to 1 to break the loop

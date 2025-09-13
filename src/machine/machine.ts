@@ -36,6 +36,8 @@ export interface IMachine {
   getBus: () => SmsBus;
   getController1: () => IController;
   getController2: () => IController;
+  // Debug stats for web UI
+  getDebugStats: () => { irqAccepted: number; iff1: boolean; iff2: boolean; im: number; halted: boolean; pc: number };
 }
 
 export const createMachine = (cfg: MachineConfig): IMachine => {
@@ -53,10 +55,23 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
       })
     : null;
 
+  let irqAcceptedCount = 0;
+  let eiCount = 0;
+  let diCount = 0;
+  let lastEiPc = 0;
+  let lastDiPc = 0;
   const cpu = createZ80({
     bus,
     waitStates: waitHooks ?? null,
-    onTrace: cfg.trace?.onTrace ?? (() => {}),
+    onTrace: (ev) => {
+      // Minimal tracing: count IRQ acceptances for diagnostics
+      if (ev.irqAccepted) irqAcceptedCount++;
+      // Count EI/DI occurrences by opcode
+      if (ev.opcode === 0xfb) { eiCount++; lastEiPc = ev.pcBefore & 0xffff; }
+      if (ev.opcode === 0xf3) { diCount++; lastDiPc = ev.pcBefore & 0xffff; }
+      // Forward to external trace if provided
+      if (typeof cfg.trace?.onTrace === 'function') cfg.trace.onTrace(ev);
+    },
     traceDisasm: !!cfg.trace?.traceDisasm,
     traceRegs: !!cfg.trace?.traceRegs,
     experimentalFastBlockOps: !!cfg.fastBlocks,
@@ -83,5 +98,20 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
     getBus: (): SmsBus => bus,
     getController1: (): IController => controller1,
     getController2: (): IController => controller2,
+    getDebugStats: (): { irqAccepted: number; iff1: boolean; iff2: boolean; im: number; halted: boolean; pc: number; eiCount: number; diCount: number; lastEiPc: number; lastDiPc: number } => {
+      const s = cpu.getState();
+      return {
+        irqAccepted: irqAcceptedCount | 0,
+        iff1: !!s.iff1,
+        iff2: !!s.iff2,
+        im: s.im as number,
+        halted: !!s.halted,
+        pc: s.pc & 0xffff,
+        eiCount: eiCount | 0,
+        diCount: diCount | 0,
+        lastEiPc: lastEiPc & 0xffff,
+        lastDiPc: lastDiPc & 0xffff,
+      };
+    },
   };
 };

@@ -13,6 +13,9 @@ export const App: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [fps, setFps] = useState(0);
   const [status, setStatus] = useState('Ready to load ROM...');
+  const [overlayEnabled, setOverlayEnabled] = useState(false);
+  const [ignorePriorityEnabled, setIgnorePriorityEnabled] = useState(false);
+  const [ignoreSpriteLimitEnabled, setIgnoreSpriteLimitEnabled] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -21,6 +24,7 @@ export const App: React.FC = () => {
     romData,
     isPaused,
     isMuted,
+    overlayEnabled,
     onFpsUpdate: setFps,
     onStatusUpdate: setStatus,
   });
@@ -47,6 +51,30 @@ export const App: React.FC = () => {
     setIsMuted(prev => !prev);
   }, []);
 
+  const handleToggleOverlay = useCallback(() => {
+    setOverlayEnabled(prev => !prev);
+  }, []);
+
+  const handleToggleIgnorePriority = useCallback(() => {
+    setIgnorePriorityEnabled(prev => {
+      const next = !prev;
+      try {
+        (globalThis as any).VDP_DEBUG_IGNORE_BG_PRIORITY = next;
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleToggleIgnoreSpriteLimit = useCallback(() => {
+    setIgnoreSpriteLimitEnabled(prev => {
+      const next = !prev;
+      try {
+        (globalThis as any).VDP_DEBUG_IGNORE_SPRITE_LIMIT = next;
+      } catch {}
+      return next;
+    });
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -65,6 +93,12 @@ export const App: React.FC = () => {
             isPaused={isPaused}
             isMuted={isMuted}
             isRomLoaded={!!romData}
+            onToggleOverlay={handleToggleOverlay}
+            overlayEnabled={overlayEnabled}
+            onToggleIgnorePriority={handleToggleIgnorePriority}
+            ignorePriorityEnabled={ignorePriorityEnabled}
+            onToggleIgnoreSpriteLimit={handleToggleIgnoreSpriteLimit}
+            ignoreSpriteLimitEnabled={ignoreSpriteLimitEnabled}
           />
 
           <div className="status-bar">{status}</div>

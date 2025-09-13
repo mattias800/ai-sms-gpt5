@@ -262,8 +262,9 @@ export class SmsBus implements IBus {
 
     // Minimal FM stub ports: read as if no FM chip present
     if (p === 0xf2) {
-      // Return 0 indicates "no FM" in some detection schemes; adjust if needed
-      return 0x00;
+      // Indicate "no FM unit present". Many titles probe this; returning 0xFF (open bus style) is a common choice.
+      // This should steer games like Sonic to the PSG path.
+      return 0xff;
     }
     if (p === 0xf0 || p === 0xf1) {
       // FM data/status ports not implemented; return open-bus style 0xFF
@@ -351,7 +352,7 @@ export class SmsBus implements IBus {
     }
     // Minimal FM control (0xF2): accept writes to enable/disable flag and ignore silently
     if (p === 0xf2) {
-      // Bit 7 often used as enable; treat non-zero as attempt to enable FM, but we ignore audio path
+      // Bit 7 often used as enable; treat non-zero as attempt to enable FM. We still ignore audio path.
       this.fmEnabled = (v & 0x80) !== 0;
       return;
     }

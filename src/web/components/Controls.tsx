@@ -7,6 +7,12 @@ interface ControlsProps {
   isPaused: boolean;
   isMuted: boolean;
   isRomLoaded: boolean;
+  onToggleOverlay: () => void;
+  overlayEnabled: boolean;
+  onToggleIgnorePriority: () => void;
+  ignorePriorityEnabled: boolean;
+  onToggleIgnoreSpriteLimit: () => void;
+  ignoreSpriteLimitEnabled: boolean;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -16,6 +22,12 @@ export const Controls: React.FC<ControlsProps> = ({
   isPaused,
   isMuted,
   isRomLoaded,
+  onToggleOverlay,
+  overlayEnabled,
+  onToggleIgnorePriority,
+  ignorePriorityEnabled,
+  onToggleIgnoreSpriteLimit,
+  ignoreSpriteLimitEnabled,
 }) => {
   return (
     <div className="controls">
@@ -27,6 +39,15 @@ export const Controls: React.FC<ControlsProps> = ({
       </button>
       <button onClick={onMute} disabled={!isRomLoaded}>
         {isMuted ? 'Unmute' : 'Mute'}
+      </button>
+      <button onClick={onToggleOverlay} disabled={!isRomLoaded}>
+        {overlayEnabled ? 'Hide Overlay' : 'Show Overlay'}
+      </button>
+      <button onClick={onToggleIgnorePriority} disabled={!isRomLoaded}>
+        {ignorePriorityEnabled ? 'BG Priority: OFF' : 'BG Priority: ON'}
+      </button>
+      <button onClick={onToggleIgnoreSpriteLimit} disabled={!isRomLoaded}>
+        {ignoreSpriteLimitEnabled ? 'Sprite Limit: OFF' : 'Sprite Limit: ON'}
       </button>
     </div>
   );
