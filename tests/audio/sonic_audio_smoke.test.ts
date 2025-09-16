@@ -20,7 +20,7 @@ describe('Sonic audio smoke (PSG unmute + RMS energy)', (): void => {
     const rom = new Uint8Array((await fs.readFile(romPath)).buffer);
     const bios = new Uint8Array((await fs.readFile(biosPath)).buffer);
 
-    const m = createMachine({ cart: { rom }, bus: { allowCartRam: true, bios }, fastBlocks: false });
+    const m = createMachine({ cart: { rom }, bus: { allowCartRam: true, bios },  });
     const cpu = m.getCPU();
     const vdp = m.getVDP();
     const psg = m.getPSG();

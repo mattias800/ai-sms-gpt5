@@ -1,13 +1,13 @@
 {
   "displayEnabled": true,
   "vblankIrqEnabled": true,
-  "vramWrites": 74836,
-  "cramWrites": 160,
-  "nonZeroVRAM": 4770,
-  "nonZeroVramWrites": 23253,
-  "lastNonZeroVramAddr": "0x3f3f",
-  "vdpDataWrites": 74996,
-  "vdpCtrlWrites": 13560,
+  "vramWrites": 56716,
+  "cramWrites": 100,
+  "nonZeroVRAM": 6535,
+  "nonZeroVramWrites": 18068,
+  "lastNonZeroVramAddr": "0x3f8f",
+  "vdpDataWrites": 56816,
+  "vdpCtrlWrites": 17252,
   "regs": [
     100,
     226,
@@ -28,7 +28,7 @@
   ],
   "nameTableBase": "3800",
   "bgPatternBase": "3800",
-  "pngNonZeroRGB": 2376,
+  "pngNonZeroRGB": 22356,
   "pngSource": "game",
-  "lastPC": "8011"
+  "lastPC": "8b7e"
 }

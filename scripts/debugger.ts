@@ -6,6 +6,7 @@ import { SmsBus, type Cartridge, type IBus } from '../src/bus/bus.js';
 import { createVDP } from '../src/vdp/vdp.js';
 import { createPSG } from '../src/psg/sn76489.js';
 import { disassembleOne } from '../src/cpu/z80/disasm.js';
+import { initializeSMS, enableSMSInterrupts } from '../src/machine/sms_init.js';
 
 // A simple, non-interactive debugger CLI you can drive with subcommands.
 // Example:
@@ -304,7 +305,11 @@ const main = (): void => {
         return 0;
       },
     },
+    experimentalFastBlockOps: true,
   });
+
+  // Initialize SMS system manually (replaces BIOS)
+  initializeSMS({ cpu, vdp, psg, bus: busProxy });
 
   const dumpRegs = (): void => {
     const s = cpu.getState();

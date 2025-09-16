@@ -31,6 +31,8 @@ export const useEmulator = ({
   const sampleBufferRef = useRef<number[]>([]);
   const animationFrameRef = useRef<number | null>(null);
   const fpsInfoRef = useRef({ frameCount: 0, lastTime: performance.now() });
+  // Detect potential stalls: track the last-seen PC and time when it changed
+  const stallRef = useRef<{ lastPc: number; lastChangeTs: number }>({ lastPc: -1, lastChangeTs: performance.now() });
   const keyStateRef = useRef({
     up: false,
     down: false,
@@ -47,8 +49,41 @@ export const useEmulator = ({
 
     try {
       const cartridge = { rom: romData };
-      const machine = createMachine({ cart: cartridge, fastBlocks: true });
+      const machine = createMachine({ cart: cartridge });
       machineRef.current = machine;
+      // Expose minimal debug helpers for web console
+      try {
+        (globalThis as any).EMULATOR = machine;
+        (globalThis as any).EMU_PRESS_B1 = (): void => {
+          const c = machine.getController1();
+          c.setState({ button1: true });
+          setTimeout(() => c.setState({ button1: false }), 200);
+        };
+        (globalThis as any).EMU_PRESS_START = (): void => {
+          const c = machine.getController1();
+          c.setState({ start: true });
+          setTimeout(() => c.setState({ start: false }), 200);
+        };
+        // Install a lightweight in-browser cycle/window tracer
+        (globalThis as any).EMU_TRACE_WINDOW = (ms = 500, pcMin = 0x8b00, pcMax = 0x8cff): Promise<string[]> => {
+          const lines: string[] = [];
+          const cpu = machine.getCPU();
+          const vdp = machine.getVDP();
+          const start = performance.now();
+          machine.setCycleHook(() => {
+            const st = cpu.getState();
+            const pc = st.pc & 0xffff;
+            if (pc >= (pcMin & 0xffff) && pc <= (pcMax & 0xffff)) {
+              const irq = vdp.hasIRQ() ? 1 : 0;
+              lines.push(`${pc.toString(16).padStart(4,'0')} IFF1=${st.iff1?1:0} IRQ=${irq}`);
+            }
+            if (performance.now() - start >= ms) {
+              machine.setCycleHook(null);
+            }
+          });
+          return new Promise(resolve => setTimeout(() => resolve(lines), ms + 50));
+        };
+      } catch {}
 
       // Initialize audio context
       if (!audioContextRef.current) {
@@ -147,6 +182,17 @@ export const useEmulator = ({
           state.button2 = true;
           break;
         case 'Enter':
+          // Map Enter to both Start (GG) and Button1 (SMS) to cover both ROM behaviors
+          state.start = true;
+          state.button1 = true;
+          break;
+        case ' ':
+          // Space as alternate Button1
+          state.button1 = true;
+          break;
+        case 's':
+        case 'S':
+          // Explicit Start key
           state.start = true;
           break;
         default:
@@ -185,6 +231,14 @@ export const useEmulator = ({
           state.button2 = false;
           break;
         case 'Enter':
+          state.start = false;
+          state.button1 = false;
+          break;
+        case ' ':
+          state.button1 = false;
+          break;
+        case 's':
+        case 'S':
           state.start = false;
           break;
         default:
@@ -297,6 +351,17 @@ export const useEmulator = ({
                 const r1 = vs.regs?.[1] ?? 0;
                 const r0 = vs.regs?.[0] ?? 0;
                 const vblank = (vs.status & 0x80) !== 0 ? 1 : 0;
+                // Update stall detector
+                const pcNow = dbg ? (dbg.pc >>> 0) : 0;
+                const pcPrev = stallRef.current.lastPc >>> 0;
+                const nowMs = tNow;
+                if (pcNow !== pcPrev) {
+                  stallRef.current.lastPc = pcNow;
+                  stallRef.current.lastChangeTs = nowMs;
+                }
+                const stagnantMs = Math.max(0, nowMs - stallRef.current.lastChangeTs) | 0;
+                const stalled = stagnantMs >= 2000; // 2 seconds threshold
+
                 onStatusUpdate(
                   `Sprites: drawn=${vs.spritePixelsDrawn ?? 0} masked=${vs.spritePixelsMaskedByPriority ?? 0} ` +
                   `8/line=${vs.perLineLimitHitLines ?? 0} active=${vs.activeSprites ?? 0} ` +
@@ -306,9 +371,10 @@ export const useEmulator = ({
                   (typeof (vs as any).vblankCount === 'number' ? `VBcnt=${(vs as any).vblankCount} ` : '') +
                   (typeof (vs as any).statusReadCount === 'number' ? `SR=${(vs as any).statusReadCount} ` : '') +
                   (typeof (vs as any).irqAssertCount === 'number' ? `IRQset=${(vs as any).irqAssertCount} ` : '') +
-                  (dbg ? `CPU: IFF1=${dbg.iff1?1:0} IFF2=${dbg.iff2?1:0} IM=${dbg.im} HALT=${dbg.halted?1:0} PC=${(dbg.pc>>>0).toString(16).padStart(4,'0')} EI=${dbg.eiCount??0} DI=${dbg.diCount??0}` +
+                  (dbg ? `CPU: IFF1=${dbg.iff1?1:0} IFF2=${dbg.iff2?1:0} IM=${dbg.im} HALT=${dbg.halted?1:0} PC=${(pcNow).toString(16).padStart(4,'0')} EI=${dbg.eiCount??0} DI=${dbg.diCount??0}` +
                     (dbg.lastEiPc ? ` lastEI=${(dbg.lastEiPc>>>0).toString(16).padStart(4,'0')}` : '') +
-                    (dbg.lastDiPc ? ` lastDI=${(dbg.lastDiPc>>>0).toString(16).padStart(4,'0')}` : '') : '')
+                    (dbg.lastDiPc ? ` lastDI=${(dbg.lastDiPc>>>0).toString(16).padStart(4,'0')}` : '') : '') +
+                  (stalled ? ` [STALL ${Math.floor(stagnantMs/1000)}s]` : '')
                 );
               }
             } catch {}

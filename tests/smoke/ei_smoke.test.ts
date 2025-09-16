@@ -28,7 +28,6 @@ describe('Z80 EI/IFF1/IRQ smoke (Sonic + BIOS)', (): void => {
     const m = createMachine({
       cart: { rom },
       bus: { allowCartRam: true, bios },
-      fastBlocks: false,
       trace: {
         onTrace: (ev: TraceEvent): void => {
           if (ev.opcode === 0xfb) eiCount++;

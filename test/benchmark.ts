@@ -73,7 +73,7 @@ class EmulatorBenchmark {
     console.log('\n📊 CPU Performance Benchmark\n');
     
     const cart = this.createTestRom();
-    const m = createMachine({ cart, fastBlocks: false });
+    const m = createMachine({ cart,  });
     const cpu = m.getCPU();
     
     // Benchmark single instruction execution
@@ -85,7 +85,7 @@ class EmulatorBenchmark {
     this.results.push(singleInst);
     
     // Benchmark block execution
-    const m2 = createMachine({ cart, fastBlocks: true });
+    const m2 = createMachine({ cart,  });
     const cpu2 = m2.getCPU();
     
     const blockExec = await this.runBenchmark(
@@ -106,7 +106,7 @@ class EmulatorBenchmark {
 
   async benchmarkFrame(): Promise<BenchmarkResult> {
     const cart = this.createTestRom();
-    const m = createMachine({ cart, fastBlocks: false });
+    const m = createMachine({ cart,  });
     const cpu = m.getCPU();
     const vdp = m.getVDP();
     
@@ -151,7 +151,7 @@ class EmulatorBenchmark {
     console.log('\n💾 Memory Access Benchmark\n');
     
     const cart: Cartridge = { rom: new Uint8Array(256 * 1024) };
-    const m = createMachine({ cart, fastBlocks: false });
+    const m = createMachine({ cart,  });
     const bus = m.getBus();
     
     // Benchmark reads
@@ -198,7 +198,7 @@ class EmulatorBenchmark {
     console.log('\n🎨 VDP Performance Benchmark\n');
     
     const cart: Cartridge = { rom: new Uint8Array(0x4000) };
-    const m = createMachine({ cart, fastBlocks: false });
+    const m = createMachine({ cart,  });
     const vdp = m.getVDP();
     
     // Benchmark VRAM writes

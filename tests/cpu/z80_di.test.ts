@@ -3,7 +3,7 @@ import { SimpleBus } from '../../src/bus/bus.js';
 import { createZ80 } from '../../src/cpu/z80/z80.js';
 
 describe('Z80 DI instruction', (): void => {
-  it('clears IFF1 and IFF2 and takes 4 cycles', (): void => {
+  it('clears IFF1 only (IFF2 unaffected) and takes 4 cycles', (): void => {
     const bus = new SimpleBus();
     const mem = bus.getMemory();
     mem.set([0xf3, 0x76], 0x0000);
@@ -14,6 +14,6 @@ describe('Z80 DI instruction', (): void => {
     expect(c).toBe(4);
     const st = cpu.getState();
     expect(st.iff1).toBe(false);
-    expect(st.iff2).toBe(false);
+    expect(st.iff2).toBe(true);
   });
 });

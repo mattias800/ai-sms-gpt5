@@ -175,6 +175,12 @@ export const disassembleOne = (read8: (addr: number) => number, pc: number): Dis
   if (op === 0xfb) return { length: 1, bytes: [op], text: 'EI' };
   if (op === 0xf3) return { length: 1, bytes: [op], text: 'DI' };
 
+  // Accumulator rotate instructions
+  if (op === 0x07) return { length: 1, bytes: [op], text: 'RLCA' };
+  if (op === 0x0f) return { length: 1, bytes: [op], text: 'RRCA' };
+  if (op === 0x17) return { length: 1, bytes: [op], text: 'RLA' };
+  if (op === 0x1f) return { length: 1, bytes: [op], text: 'RRA' };
+
   if (op === 0xdb) {
     const n = rd(read8, (pc + 1) & 0xffff);
     return { length: 2, bytes: [op, n], text: `IN A,(${hex2(n)})` };
@@ -189,6 +195,21 @@ export const disassembleOne = (read8: (addr: number) => number, pc: number): Dis
     const hi = rd(read8, (pc + 2) & 0xffff);
     const nn = ((hi << 8) | lo) & 0xffff;
     return { length: 3, bytes: [op, lo, hi], text: `JP ${hex4(nn)}` };
+  }
+
+  // Conditional jump instructions
+  if ((op & 0xc7) === 0xc2) {
+    const lo = rd(read8, (pc + 1) & 0xffff);
+    const hi = rd(read8, (pc + 2) & 0xffff);
+    const nn = ((hi << 8) | lo) & 0xffff;
+    const cc = (op >>> 3) & 7;
+    const cond = ccJP[cc]!;
+    return { length: 3, bytes: [op, lo, hi], text: `JP ${cond},${hex4(nn)}` };
+  }
+
+  // JP (HL) (0xE9)
+  if (op === 0xe9) {
+    return { length: 1, bytes: [op], text: 'JP (HL)' };
   }
 
   if (op === 0x18) {
@@ -373,6 +394,62 @@ export const disassembleOne = (read8: (addr: number) => number, pc: number): Dis
   if (op === 0xd9) return { length: 1, bytes: [op], text: 'EXX' };
   if (op === 0xeb) return { length: 1, bytes: [op], text: 'EX DE,HL' };
   if (op === 0xe3) return { length: 1, bytes: [op], text: 'EX (SP),HL' };
+
+  // Immediate arithmetic/logic instructions
+  if (op === 0xc6) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `ADD A,${hex2(n)}` };
+  }
+  if (op === 0xce) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `ADC A,${hex2(n)}` };
+  }
+  if (op === 0xd6) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `SUB ${hex2(n)}` };
+  }
+  if (op === 0xde) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `SBC A,${hex2(n)}` };
+  }
+  if (op === 0xe6) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `AND ${hex2(n)}` };
+  }
+  if (op === 0xee) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `XOR ${hex2(n)}` };
+  }
+  if (op === 0xf6) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `OR ${hex2(n)}` };
+  }
+  if (op === 0xfe) {
+    const n = rd(read8, (pc + 1) & 0xffff);
+    return { length: 2, bytes: [op, n], text: `CP ${hex2(n)}` };
+  }
+
+  // CB prefix instructions (bit manipulation)
+  if (op === 0xcb) {
+    const sub = rd(read8, (pc + 1) & 0xffff);
+    const group = sub & 0xc0;
+    const y = (sub >>> 3) & 7;
+    const r = sub & 7;
+    
+    if (group === 0x40) {
+      return { length: 2, bytes: [op, sub], text: `BIT ${y},${rNames[r]!}` };
+    }
+    if (group === 0x80) {
+      return { length: 2, bytes: [op, sub], text: `RES ${y},${rNames[r]!}` };
+    }
+    if (group === 0xc0) {
+      return { length: 2, bytes: [op, sub], text: `SET ${y},${rNames[r]!}` };
+    }
+    
+    // Rotates/shifts
+    const rotNames: readonly string[] = ['RLC', 'RRC', 'RL', 'RR', 'SLA', 'SRA', 'SLL', 'SRL'] as const;
+    return { length: 2, bytes: [op, sub], text: `${rotNames[y]!} ${rNames[r]!}` };
+  }
 
   // Fallback base
   return { length: 1, bytes: [op], text: `DB ${hex2(op)}` };

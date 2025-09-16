@@ -23,6 +23,7 @@
     "verify": "npm run test:all",
     "benchmark": "npx tsx test/benchmark.ts",
     "trace": "npx tsx tools/trace_execution.ts",
+    "trace:alex": "SMS_ROM=./roms/alex.sms FRAMES=3 OUT=alex_irq_trace.csv npx tsx tools/alex_irq_window_trace.ts",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run verify",
     "web": "npm run build:web && npx http-server dist-web -p 8080 -c-1 --cors",
     "web:dev": "npx http-server . -p 8080 -c-1 --cors",
@@ -48,14 +49,14 @@
     "compare:im1": "SMS_ROM=./roms/im1_test.sms ALIGN_PC=0038 MAX_STEPS=50 npm run --silent compare:mame"
   },
   "devDependencies": {
-    "@types/node": "^20.19.11",
+    "@types/node": "^24.4.0",
     "@types/pngjs": "^6.0.5",
-    "@types/react": "^19.1.12",
+    "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-react": "^5.0.2",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.2",
     "eslint-plugin-prefer-arrow": "^1.2.3",
@@ -63,8 +64,8 @@
     "fast-check": "^4.2.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
-    "vite": "^5.4.19",
-    "vitest": "^2.1.9"
+    "vite": "^7.1.5",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "canvas": "^3.2.0",

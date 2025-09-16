@@ -52,6 +52,6 @@ export const createResetState = (): Z80State => ({
   r: 0,
   im: 1,
   iff1: false,
-  iff2: false,
+  iff2: true, // Allow interrupts to be enabled when EI is executed
   halted: false,
 });

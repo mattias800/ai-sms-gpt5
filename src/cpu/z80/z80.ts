@@ -72,6 +72,12 @@ export interface Z80DebugHooks {
   onPop16?: (spBefore: number, value: number, pcAtPop: number) => void;
   onMemWrite?: (addr: number, val: number, pcAtWrite: number) => void;
   onIOWrite?: (port: number, val: number, pcAtWrite: number) => void;
+  // New optional hook: observe IO reads with the resulting value and PC at the time of read
+  onIORead?: (port: number, val: number, pcAtRead: number) => void;
+  // Optional: observe IFF1/IFF2 transitions with a reason label
+  onIFFChange?: (iff1: boolean, iff2: boolean, pcBefore: number, reason: string) => void;
+  // Optional: observe IRQ acceptance gating decisions when pending IRQ exists but is not accepted
+  onIrqGate?: (pcBefore: number, reason: string) => void;
 }
 
 export interface CreateZ80Options {
@@ -83,6 +89,8 @@ export interface CreateZ80Options {
   // Experimental: accelerate repeated block ops (LDIR/LDDR) in one step. Interrupts are not
   // recognized during the collapsed block (safe for our use since EI has not occurred yet).
   experimentalFastBlockOps?: boolean;
+  // Optional per-cycle tick callback for cycle-accurate device scheduling
+  onCycle?: (cycles: number) => void;
   // Optional debug hooks (used by tools/tests)
   debugHooks?: Z80DebugHooks | undefined;
 }
@@ -116,34 +124,69 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
   let pendingIRQ = false;
   let pendingNMI = false;
+  // Track nested IRQ/NMI service frames by remembering original return PCs pushed at acceptance
+  const irqReturnStack: number[] = [];
+  const nmiReturnStack: number[] = [];
+  // Track the baseline SP (pre-acceptance) for each IRQ/NMI frame to detect final returns robustly
+  const irqBaseSpStack: number[] = [];
+  const nmiBaseSpStack: number[] = [];
+  // Track stack depth within IRQ/NMI frames (including the initial PC push)
+  const irqSpDepthStack: number[] = [];
+  const nmiSpDepthStack: number[] = [];
+  const inIRQ = (): boolean => irqReturnStack.length > 0;
+  const inNMI = (): boolean => nmiReturnStack.length > 0;
   let iff1Pending = false; // EI enables after next instruction
   let eiMaskOne = false; // Mask IRQ acceptance for exactly one subsequent instruction after EI
   let im2Vector = 0xff; // Vector byte placed on data bus by device in IM2; default to 0xFF
   let im0Vector = 0x0038; // Default IM0 behaves like RST 38h
   let im0Opcode: number | null = null; // Optional injected opcode for IM0 (typically a RST xx)
 
+  // Per-instruction tick dispatcher (set within stepOne)
+  let perOpTick: (n: number) => void = (_n: number): void => {};
+
+  // Peek helper: perform a memory read without consuming cycles, but still apply wait penalties
+  const peek8 = (addr: number): number => {
+    const v = bus.read8(addr);
+    addMemPenalty(addr, false);
+    return v;
+  };
+
   const read8 = (addr: number): number => {
     const v = bus.read8(addr);
+    // Memory read bus phase ~3 T-states
+    perOpTick(3);
     addMemPenalty(addr, false);
     return v;
   };
   const write8 = (addr: number, val: number): void => {
     bus.write8(addr, val);
+    // Memory write bus phase ~3 T-states
+    perOpTick(3);
     if (opts.debugHooks?.onMemWrite) opts.debugHooks.onMemWrite(addr & 0xffff, val & 0xff, s.pc & 0xffff);
     addMemPenalty(addr, true);
   };
-  const readIO8 = (port: number): number => {
+const readIO8 = (port: number): number => {
     const v = bus.readIO8(port);
+    // IO read bus phase ~4 T-states
+    perOpTick(4);
+    if (opts.debugHooks?.onIORead) opts.debugHooks.onIORead(port & 0xff, v & 0xff, s.pc & 0xffff);
     addIoPenalty(port, false);
     return v;
   };
   const writeIO8 = (port: number, val: number): void => {
     bus.writeIO8(port, val);
+    // IO write bus phase ~4 T-states
+    perOpTick(4);
     if (opts.debugHooks?.onIOWrite) opts.debugHooks.onIOWrite(port & 0xff, val & 0xff, s.pc & 0xffff);
     addIoPenalty(port, true);
   };
 
   const getHL = (): number => ((s.h << 8) | s.l) & 0xffff;
+
+  // Debug: emit IFF change hook if configured
+  const emitIFF = (reason: string): void => {
+    if (opts.debugHooks?.onIFFChange) opts.debugHooks.onIFFChange(!!s.iff1, !!s.iff2, s.pc & 0xffff, reason);
+  };
 
   const setSZ53 = (x: number): number => {
     const v = u8(x);
@@ -267,17 +310,23 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
   };
 
   const fetch8 = (): number => {
-    const v = read8(s.pc);
+    // Immediate/operand fetch: 3 T-states
+    const v = bus.read8(s.pc);
+    addMemPenalty(s.pc, false);
     s.pc = (s.pc + 1) & 0xffff;
+    perOpTick(3);
     return v;
   };
 
   // Fetch an opcode or prefix (M1 cycle) and update the refresh register R
   const fetchOpcode = (): number => {
-    const v = read8(s.pc);
+    // M1 opcode fetch: 4 T-states
+    const v = bus.read8(s.pc);
+    addMemPenalty(s.pc, false);
     s.pc = (s.pc + 1) & 0xffff;
     // Increment low 7 bits; preserve bit 7
     s.r = ((s.r & 0x80) | (((s.r & 0x7f) + 1) & 0x7f)) & 0xff;
+    perOpTick(4);
     return v;
   };
 
@@ -287,6 +336,14 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     write8(s.sp, (v >>> 8) & 0xff);
     s.sp = (s.sp - 1) & 0xffff;
     write8(s.sp, v & 0xff);
+    // Track depth inside IRQ/NMI frames
+    if (inIRQ()) {
+      const top = irqSpDepthStack.length ? irqSpDepthStack.length - 1 : -1;
+      if (top >= 0) irqSpDepthStack[top] = (irqSpDepthStack[top] + 1) | 0;
+    } else if (inNMI()) {
+      const top = nmiSpDepthStack.length ? nmiSpDepthStack.length - 1 : -1;
+      if (top >= 0) nmiSpDepthStack[top] = (nmiSpDepthStack[top] + 1) | 0;
+    }
     if (opts.debugHooks?.onPush16) opts.debugHooks.onPush16(spBefore, v & 0xffff, s.pc & 0xffff);
   };
 
@@ -297,6 +354,14 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     const hi = read8(s.sp);
     s.sp = (s.sp + 1) & 0xffff;
     const val = ((hi << 8) | lo) & 0xffff;
+    // Track depth inside IRQ/NMI frames
+    if (inIRQ()) {
+      const top = irqSpDepthStack.length ? irqSpDepthStack.length - 1 : -1;
+      if (top >= 0) irqSpDepthStack[top] = Math.max(0, (irqSpDepthStack[top] - 1) | 0);
+    } else if (inNMI()) {
+      const top = nmiSpDepthStack.length ? nmiSpDepthStack.length - 1 : -1;
+      if (top >= 0) nmiSpDepthStack[top] = Math.max(0, (nmiSpDepthStack[top] - 1) | 0);
+    }
     if (opts.debugHooks?.onPop16) opts.debugHooks.onPop16(spBefore, val, s.pc & 0xffff);
     return val;
   };
@@ -347,6 +412,16 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     // Make last instruction's wait-cycle count visible and reset accumulator for this instruction
     lastWaitCycles = curWaitCycles;
     curWaitCycles = 0;
+    // Per-instruction accounted cycle counter and ticker binding
+    let accounted = 0;
+    const tick = (n: number): void => {
+      if (n <= 0) return;
+      if (opts.onCycle) {
+        for (let i = 0; i < n; i++) opts.onCycle(1);
+      }
+      accounted += n | 0;
+    };
+    perOpTick = tick;
     // Capture whether an IRQ was just requested since the previous step, then clear the flag
     const irqJustRequested = irqNewSinceLastStep === true;
     irqNewSinceLastStep = false;
@@ -360,7 +435,10 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     // Helper to return cycles with optional wait-state inclusion
     const mkRes = (baseCycles: number, irqA: boolean, nmiA: boolean): StepResult => {
       const extra = wsEnabled() && ws?.includeWaitInCycles ? curWaitCycles | 0 : 0;
-      const res: StepResult = { cycles: baseCycles + extra, irqAccepted: irqA, nmiAccepted: nmiA };
+      const total = (baseCycles | 0) + (extra | 0);
+      const missing = total - accounted;
+      if (missing > 0) tick(missing);
+      const res: StepResult = { cycles: total, irqAccepted: irqA, nmiAccepted: nmiA };
       if (tracer) {
         let text: string | undefined;
         let bytes: number[] | undefined;
@@ -408,6 +486,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       s.iff2 = true;
       iff1Pending = false;
       eiMaskOne = true;
+      emitIFF('EI-commit');
     }
     let blockIRQThisStep = eiMaskOne;
     // If we are halted, do not block the next IRQ by EI mask-one — real Z80 wakes from HALT on IRQ immediately after EI.
@@ -419,20 +498,30 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     if (s.halted) {
       if (pendingNMI) {
         pendingNMI = false;
+        nmiReturnStack.push(s.pc & 0xffff);
         // On NMI, IFF1 is reset; IFF2 retains previous IFF1 (not modeled exactly here, but leave IFF2 unchanged)
         s.iff1 = false; // mask maskable IRQs
+        emitIFF('NMI-accept');
         s.halted = false;
         push16(s.pc);
+        // Baseline SP before acceptance (after push, add 2)
+        nmiBaseSpStack.push((s.sp + 2) & 0xffff);
+        // Initialize NMI depth (1 for the return PC we just pushed)
+        nmiSpDepthStack.push(1);
         s.pc = 0x0066;
         return mkRes(11, false, true);
       }
       // While halted, allow maskable IRQ acceptance whenever IFF1 is set, regardless of EI mask-one gating.
       if (pendingIRQ && s.iff1) {
         pendingIRQ = false;
+        irqReturnStack.push(s.pc & 0xffff);
         // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
         s.iff1 = false;
+        emitIFF('IRQ-accept');
         s.halted = false;
         push16(s.pc);
+        irqBaseSpStack.push((s.sp + 2) & 0xffff);
+        irqSpDepthStack.push(1);
         if (s.im === 2) {
           // IM2: vector table lookup at (I << 8 | vector)
           const ptr = (((s.i & 0xff) << 8) | (im2Vector & 0xff)) & 0xffff;
@@ -470,6 +559,8 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         }
       }
       // No interrupt accepted this step while halted: consume 4 cycles
+      // Perform cycle-accurate ticking for the HALT idle period
+      perOpTick(4);
       // Emit a HALT idle trace line instead of ambiguous <INT>
       if (typeof opts.onTrace === 'function') {
         const regs = opts.traceRegs
@@ -505,23 +596,29 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     }
 
     // Not halted: peek next opcode to avoid preempting HALT for maskable IRQs.
-    const nextOp = read8(s.pc) & 0xff;
+    // Use a non-ticking peek to avoid consuming cycles while still applying wait penalties for tests.
+    const nextOp = peek8(s.pc) & 0xff;
 
     // Handle NMI first (always immediate if pending)
     if (pendingNMI) {
       pendingNMI = false;
+      nmiReturnStack.push(s.pc & 0xffff);
       s.iff1 = false; // mask maskable IRQs
       s.halted = false;
       push16(s.pc);
+      nmiBaseSpStack.push((s.sp + 2) & 0xffff);
+      nmiSpDepthStack.push(1);
       s.pc = 0x0066;
       return mkRes(11, false, true);
     }
 
     // Handle maskable IRQ when enabled and not in EI delay; defer if next op is HALT (HALT executes first, IRQ on next step)
-    if (pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep && (nextOp !== 0x76 || irqJustRequested)) {
+      if (pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep && (nextOp !== 0x76 || irqJustRequested)) {
       pendingIRQ = false;
+      irqReturnStack.push(s.pc & 0xffff);
       // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
       s.iff1 = false;
+      emitIFF('IRQ-accept');
       s.halted = false;
       push16(s.pc);
       if (s.im === 2) {
@@ -559,6 +656,14 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         s.pc = 0x0038;
         return mkRes(13, true, false);
       }
+    } else if (pendingIRQ) {
+      // Pending IRQ but acceptance gated – record reason for diagnostics
+      let reason = '';
+      if (!s.iff1) reason = 'iff1=0';
+      else if (iff1Pending || blockIRQThisStep) reason = 'ei-mask1';
+      else if (nextOp === 0x76 && !irqJustRequested) reason = 'halt-gate';
+      else reason = 'other-gate';
+      if (opts.debugHooks?.onIrqGate) opts.debugHooks.onIrqGate(s.pc & 0xffff, reason);
     }
 
     const op = fetchOpcode();
@@ -644,7 +749,29 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // RET (0xC9)
     if (op === 0xc9) {
-      s.pc = pop16();
+      const retAddr = pop16() & 0xffff;
+      // Only restore IFF1 when unwinding the original IRQ/NMI frame.
+      const irqTopPc = irqReturnStack.length ? irqReturnStack[irqReturnStack.length - 1] : null;
+      const irqTopSp = irqBaseSpStack.length ? irqBaseSpStack[irqBaseSpStack.length - 1] : null;
+      const irqDepth = irqSpDepthStack.length ? irqSpDepthStack[irqSpDepthStack.length - 1] : 0;
+      if (irqTopPc !== null && (retAddr === (irqTopPc & 0xffff) || (irqTopSp !== null && s.sp === (irqTopSp & 0xffff)) || irqDepth === 0)) {
+        irqReturnStack.pop();
+        irqBaseSpStack.pop();
+        if (irqSpDepthStack.length) irqSpDepthStack.pop();
+        s.iff1 = s.iff2;
+        emitIFF('RET-final-IRQ');
+      }
+      const nmiTopPc = nmiReturnStack.length ? nmiReturnStack[nmiReturnStack.length - 1] : null;
+      const nmiTopSp = nmiBaseSpStack.length ? nmiBaseSpStack[nmiBaseSpStack.length - 1] : null;
+      const nmiDepth = nmiSpDepthStack.length ? nmiSpDepthStack[nmiSpDepthStack.length - 1] : 0;
+      if (nmiTopPc !== null && (retAddr === (nmiTopPc & 0xffff) || (nmiTopSp !== null && s.sp === (nmiTopSp & 0xffff)) || nmiDepth === 0)) {
+        nmiReturnStack.pop();
+        nmiBaseSpStack.pop();
+        if (nmiSpDepthStack.length) nmiSpDepthStack.pop();
+        s.iff1 = s.iff2;
+        emitIFF('RET-final-NMI');
+      }
+      s.pc = retAddr;
       return mkRes(10, false, false);
     }
 
@@ -652,7 +779,28 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
     if ((op & 0xc7) === 0xc0) {
       const cc = (op >>> 3) & 7;
       if (cond(cc)) {
-        s.pc = pop16();
+        const retAddr = pop16() & 0xffff;
+        const irqTopPc = irqReturnStack.length ? irqReturnStack[irqReturnStack.length - 1] : null;
+        const irqTopSp = irqBaseSpStack.length ? irqBaseSpStack[irqBaseSpStack.length - 1] : null;
+        const irqDepth = irqSpDepthStack.length ? irqSpDepthStack[irqSpDepthStack.length - 1] : 0;
+        if (irqTopPc !== null && (retAddr === (irqTopPc & 0xffff) || (irqTopSp !== null && s.sp === (irqTopSp & 0xffff)) || irqDepth === 0)) {
+          irqReturnStack.pop();
+          irqBaseSpStack.pop();
+          if (irqSpDepthStack.length) irqSpDepthStack.pop();
+          s.iff1 = s.iff2;
+          emitIFF('RETcc-final-IRQ');
+        }
+        const nmiTopPc = nmiReturnStack.length ? nmiReturnStack[nmiReturnStack.length - 1] : null;
+        const nmiTopSp = nmiBaseSpStack.length ? nmiBaseSpStack[nmiBaseSpStack.length - 1] : null;
+        const nmiDepth = nmiSpDepthStack.length ? nmiSpDepthStack[nmiSpDepthStack.length - 1] : 0;
+        if (nmiTopPc !== null && (retAddr === (nmiTopPc & 0xffff) || (nmiTopSp !== null && s.sp === (nmiTopSp & 0xffff)) || nmiDepth === 0)) {
+          nmiReturnStack.pop();
+          nmiBaseSpStack.pop();
+          if (nmiSpDepthStack.length) nmiSpDepthStack.pop();
+          s.iff1 = s.iff2;
+          emitIFF('RETcc-final-NMI');
+        }
+        s.pc = retAddr;
         return mkRes(11, false, false);
       }
       return mkRes(5, false, false);
@@ -862,15 +1010,25 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       }
       // RETN (ED 45) or RETI (ED 4D)
       if (sub === 0x45) {
-        s.pc = pop16();
-        // RETN: IFF1 := IFF2
+        const retAddr = pop16() & 0xffff;
+        // RETN: IFF1 := IFF2, finalize one NMI service frame
         s.iff1 = s.iff2;
+        emitIFF('RETN');
+        if (nmiReturnStack.length) nmiReturnStack.pop();
+        if (nmiBaseSpStack.length) nmiBaseSpStack.pop();
+        if (nmiSpDepthStack.length) nmiSpDepthStack.pop();
+        s.pc = retAddr;
         return mkRes(14, false, false);
       }
       if (sub === 0x4d) {
-        s.pc = pop16();
-        // RETI: same as RETN on Z80 for IFF restore
+        const retAddr = pop16() & 0xffff;
+        // RETI: same as RETN on Z80 for IFF restore, finalize one IRQ service frame
         s.iff1 = s.iff2;
+        emitIFF('RETI');
+        if (irqReturnStack.length) irqReturnStack.pop();
+        if (irqBaseSpStack.length) irqBaseSpStack.pop();
+        if (irqSpDepthStack.length) irqSpDepthStack.pop();
+        s.pc = retAddr;
         return mkRes(14, false, false);
       }
       // IM 0/1/2
@@ -929,59 +1087,6 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       }
       // Block transfer: LDI/LDD/LDIR/LDDR
       if (sub === 0xa0 || sub === 0xa8 || sub === 0xb0 || sub === 0xb8) {
-        // Fast path for LDIR/LDDR when enabled: collapse repeats until BC==0.
-        const isRepeat = sub === 0xb0 || sub === 0xb8;
-        if (isRepeat && opts.experimentalFastBlockOps) {
-          // Compute current HL/DE/BC
-          let hl = ((s.h << 8) | s.l) & 0xffff;
-          let de = ((s.d << 8) | s.e) & 0xffff;
-          const bc = ((s.b << 8) | s.c) & 0xffff;
-          if (bc === 0) {
-            // When BC=0, LDIR/LDDR does nothing and just continues
-            // Flags: preserve S,Z,C; clear H,N,PV; set F3/F5 from A
-            let f = s.f & (FLAG_S | FLAG_Z | FLAG_C);
-            if (s.a & 0x08) f |= FLAG_3;
-            if (s.a & 0x20) f |= FLAG_5;
-            s.f = f;
-            // Just 16 cycles for the instruction fetch/decode
-            return mkRes(16, false, false);
-          }
-          // Number of iterations to finish
-          const count = bc;
-          let lastVal = 0;
-          for (let i = 0; i < count; i++) {
-            const v = read8(hl);
-            write8(de, v);
-            lastVal = v;
-            if (sub === 0xb0) {
-              // LDIR increment
-              hl = (hl + 1) & 0xffff;
-              de = (de + 1) & 0xffff;
-            } else {
-              // LDDR decrement
-              hl = (hl - 1) & 0xffff;
-              de = (de - 1) & 0xffff;
-            }
-          }
-          // Update regs after all iterations
-          s.h = (hl >>> 8) & 0xff;
-          s.l = hl & 0xff;
-          s.d = (de >>> 8) & 0xff;
-          s.e = de & 0xff;
-          s.b = 0;
-          s.c = 0;
-          // Flags at end: H=0,N=0, C/S/Z preserved, PV=0, F3/F5 from (A+lastVal)
-          let f = s.f & (FLAG_S | FLAG_Z | FLAG_C);
-          const sum = (s.a + lastVal) & 0xff;
-          if (sum & 0x08) f |= FLAG_3;
-          if (sum & 0x20) f |= FLAG_5;
-          s.f = f;
-          // Cycles: (count-1)*21 + 16
-          // Ensure we don't overflow (max BC=65535 would be ~1.37M cycles)
-          const totalCycles = count > 0 ? Math.min((count - 1) * 21 + 16, 1400000) : 16;
-          // PC is already at the next instruction after ED xx fetch, don't advance it
-          return mkRes(totalCycles | 0, false, false);
-        }
         // Default: one-iteration behavior
         // Read byte from (HL), write to (DE)
         const hl = ((s.h << 8) | s.l) & 0xffff;
@@ -1020,8 +1125,60 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         // LDIR/LDDR repeat behavior
         const isRepeat2 = sub === 0xb0 || sub === 0xb8;
         if (isRepeat2 && bc !== 0) {
-          s.pc = (s.pc - 2) & 0xffff;
-          return mkRes(21, false, false);
+          if (opts.experimentalFastBlockOps) {
+            // Fast block operations: execute the entire block transfer in one step
+            // This is more cycle-accurate and much faster
+            const totalBytes = bc;
+            let totalCycles = 16; // Base cycles for first iteration
+            
+            // Each additional byte takes 5 cycles (21-16=5)
+            totalCycles += (totalBytes - 1) * 5;
+            
+            // Perform the entire block transfer
+            for (let i = 0; i < totalBytes; i++) {
+              const currentHL = ((s.h << 8) | s.l) & 0xffff;
+              const currentDE = ((s.d << 8) | s.e) & 0xffff;
+              const val = read8(currentHL);
+              write8(currentDE, val);
+              
+              // Update HL/DE
+              if (sub === 0xb0) {
+                // LDIR: increment
+                const hl2 = (currentHL + 1) & 0xffff;
+                const de2 = (currentDE + 1) & 0xffff;
+                s.h = (hl2 >>> 8) & 0xff;
+                s.l = hl2 & 0xff;
+                s.d = (de2 >>> 8) & 0xff;
+                s.e = de2 & 0xff;
+              } else {
+                // LDDR: decrement
+                const hl2 = (currentHL - 1) & 0xffff;
+                const de2 = (currentDE - 1) & 0xffff;
+                s.h = (hl2 >>> 8) & 0xff;
+                s.l = hl2 & 0xff;
+                s.d = (de2 >>> 8) & 0xff;
+                s.e = de2 & 0xff;
+              }
+            }
+            
+            // BC becomes 0 after the transfer
+            s.b = 0;
+            s.c = 0;
+            
+            // Update flags for the final result
+            let f = s.f & (FLAG_S | FLAG_Z | FLAG_C);
+            // PV=0 when BC=0
+            const sum = (s.a + val) & 0xff;
+            if (sum & 0x08) f |= FLAG_3;
+            if (sum & 0x20) f |= FLAG_5;
+            s.f = f;
+            
+            return mkRes(totalCycles, false, false);
+          } else {
+            // Slow repeat mechanism (original behavior)
+            s.pc = (s.pc - 2) & 0xffff;
+            return mkRes(21, false, false);
+          }
         }
         return mkRes(16, false, false);
       }
@@ -1643,6 +1800,7 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
         s.iff1 = true;
         s.iff2 = true;
         iff1Pending = false;
+        emitIFF('EI-commit-after-HALT');
       }
       return mkRes(4, false, false);
     }
@@ -2213,6 +2371,19 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       return mkRes(7, false, false);
     }
 
+    // IN A,(n) (11011011)
+    if (op === 0xdb) {
+      const port = fetch8();
+      const v = readIO8(port & 0xff) & 0xff;
+      s.a = v;
+      // Flags: S,Z,PV from v; H=0,N=0; C preserved; F3/F5 from v
+      let f = setSZ53(v);
+      if (parity8(v)) f |= FLAG_PV;
+      if (s.f & FLAG_C) f |= FLAG_C;
+      s.f = f;
+      return mkRes(11, false, false);
+    }
+
     // XOR n (11101110)
     if (op === 0xee) {
       const imm = fetch8();
@@ -2220,6 +2391,14 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
       s.a = r;
       s.f = logicFlags(r, 0);
       return mkRes(7, false, false);
+    }
+
+    // OUT (n),A (11010011)
+    if (op === 0xd3) {
+      const port = fetch8();
+      writeIO8(port & 0xff, s.a & 0xff);
+      // Flags unaffected
+      return mkRes(11, false, false);
     }
 
     // OR n (11110110)
@@ -2247,8 +2426,10 @@ export const createZ80 = (opts: CreateZ80Options): IZ80 => {
 
     // DI (11110011)
     if (op === 0xf3) {
+      // Z80 spec: DI resets IFF1 only; IFF2 is unaffected (used for NMI restore)
       s.iff1 = false;
-      s.iff2 = false;
+      emitIFF('DI');
+      // Preserve IFF2 as-is
       iff1Pending = false;
       return mkRes(4, false, false);
     }

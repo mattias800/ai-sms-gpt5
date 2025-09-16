@@ -55,3 +55,6 @@ visualize_*.js
 # Disallow SMS ROMs
 **/*.sms
 .DS_Store
+
+# Web build output
+dist-web/

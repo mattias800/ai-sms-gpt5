@@ -311,9 +311,10 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       const v = inVBlank ? 0xc0 + (s.line - s.vblankStartLine) : s.line;
       return v & 0xff;
     }
-    if (p === 0xbf) {
+if (p === 0xbf) {
       // Status read: return and clear VBlank/line irq flags
-      const v = s.status & 0xff;
+      const vPrev = s.status & 0xff;
+      const irqPrev = !!s.irqVLine;
       // Clear VBlank flag (bit 7) and line IRQ status (bit 5 proxy), and drop IRQ wire
       s.status &= ~0x80;
       s.status &= ~0x20;
@@ -321,7 +322,14 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       s.latch = null; // reading status clears latch on real hardware
       // Debug: count status reads
       s.statusReadCount = (s.statusReadCount + 1) | 0;
-      return v;
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.DEBUG_VDP_STATUS_LOG && env.DEBUG_VDP_STATUS_LOG !== '0') {
+          // eslint-disable-next-line no-console
+          console.log(`vdp-status-read prev=0x${vPrev.toString(16).toUpperCase().padStart(2,'0')} irqPrev=${irqPrev?1:0} -> after status=0x${(s.status&0xff).toString(16).toUpperCase().padStart(2,'0')} irqAfter=${s.irqVLine?1:0}`);
+        }
+      } catch {}
+      return vPrev;
     }
     // 0xbe data port read: buffered VRAM read
     const v = s.readBuffer;
@@ -415,10 +423,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         s.displayEnabledThisFrame = ((s.regs[1] ?? 0) & 0x40) !== 0;
         // Reset per-line scroll buffer to current global value
         s.hScrollLine.fill(s.regs[8] ?? 0);
-        // Clear VBlank flag at start of new frame if it wasn't read
-        s.status &= ~0x80;
-        // Clear line IRQ status bit for a fresh frame window
-        s.status &= ~0x20;
+        // Do not auto-clear VBlank or line IRQ status at frame start; these flags are sticky until status is read.
         // Keep IRQ line as-is at frame start. It will be cleared by status read or when disabled by registers.
       }
     }

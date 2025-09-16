@@ -16,7 +16,7 @@ describe('Memory Banking Tests', () => {
       }
       
       const cart: Cartridge = { rom };
-      const m = createMachine({ cart, fastBlocks: false });
+      const m = createMachine({ cart,  });
       const bus = m.getBus();
       
       // Test initial banks (0, 1, 2)
@@ -46,7 +46,7 @@ describe('Memory Banking Tests', () => {
       }
       
       const cart: Cartridge = { rom };
-      const m = createMachine({ cart, fastBlocks: false });
+      const m = createMachine({ cart,  });
       const bus = m.getBus();
       
       // Bank 5 should wrap to bank 1 (5 % 4 = 1)
@@ -62,7 +62,7 @@ describe('Memory Banking Tests', () => {
   describe('RAM Mirroring', () => {
     it('should mirror RAM correctly', () => {
       const cart: Cartridge = { rom: new Uint8Array(0x4000) };
-      const m = createMachine({ cart, fastBlocks: false });
+      const m = createMachine({ cart,  });
       const bus = m.getBus();
       
       // Write to main RAM
@@ -84,7 +84,7 @@ describe('Memory Banking Tests', () => {
   describe('RAM in Slot 0', () => {
     it('should map RAM to slot 0 when enabled', () => {
       const cart: Cartridge = { rom: new Uint8Array(0x8000) };
-      const m = createMachine({ cart, fastBlocks: false });
+      const m = createMachine({ cart,  });
       const bus = m.getBus();
       
       // Initially, slot 0 should be ROM
@@ -112,7 +112,7 @@ describe('Memory Banking Tests', () => {
   describe('Cartridge RAM', () => {
     it('should support cartridge RAM when enabled', () => {
       const cart: Cartridge = { rom: new Uint8Array(0x10000) };
-      const m = createMachine({ cart, fastBlocks: false });
+      const m = createMachine({ cart,  });
       const bus = m.getBus();
       
       // Initially, 0x8000-0xBFFF should be ROM
