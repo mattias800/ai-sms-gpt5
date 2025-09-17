@@ -35,11 +35,13 @@ visual_output/
 
 # Logs
 *.log
+!traces/*.log
 npm-debug.log*
 
-# Scripts and tools
-scripts/
-tools/
+# Scripts and tools (track these in git)
+# previously ignored:
+# scripts/
+# tools/
 
 # Debug files
 debug_*.js
@@ -52,8 +54,15 @@ test_*.js
 trace_*.js
 visualize_*.js
 
-# Disallow SMS ROMs
+# Disallow BIOS/ROM assets
 **/*.sms
+**/*.gg
+**/*.gb
+**/*.gbc
+**/*.ic2
+**/mpr-*.rom
+third_party/mame/roms/**
+roms/**
 .DS_Store
 
 # Web build output
