@@ -47,87 +47,129 @@ export const useEmulator = ({
   useEffect(() => {
     if (!romData) return;
 
-    try {
-      const cartridge = { rom: romData };
-      const machine = createMachine({ cart: cartridge });
-      machineRef.current = machine;
-      // Expose minimal debug helpers for web console
+    let cancelled = false;
+    (async () => {
       try {
-        (globalThis as any).EMULATOR = machine;
-        (globalThis as any).EMU_PRESS_B1 = (): void => {
-          const c = machine.getController1();
-          c.setState({ button1: true });
-          setTimeout(() => c.setState({ button1: false }), 200);
-        };
-        (globalThis as any).EMU_PRESS_START = (): void => {
-          const c = machine.getController1();
-          c.setState({ start: true });
-          setTimeout(() => c.setState({ start: false }), 200);
-        };
-        // Install a lightweight in-browser cycle/window tracer
-        (globalThis as any).EMU_TRACE_WINDOW = (ms = 500, pcMin = 0x8b00, pcMax = 0x8cff): Promise<string[]> => {
-          const lines: string[] = [];
-          const cpu = machine.getCPU();
-          const vdp = machine.getVDP();
-          const start = performance.now();
-          machine.setCycleHook(() => {
-            const st = cpu.getState();
-            const pc = st.pc & 0xffff;
-            if (pc >= (pcMin & 0xffff) && pc <= (pcMax & 0xffff)) {
-              const irq = vdp.hasIRQ() ? 1 : 0;
-              lines.push(`${pc.toString(16).padStart(4,'0')} IFF1=${st.iff1?1:0} IRQ=${irq}`);
-            }
-            if (performance.now() - start >= ms) {
-              machine.setCycleHook(null);
-            }
-          });
-          return new Promise(resolve => setTimeout(() => resolve(lines), ms + 50));
-        };
-      } catch {}
+        const cartridge = { rom: romData };
 
-      // Initialize audio context
-      if (!audioContextRef.current) {
-        type AudioContextCtor = new (contextOptions?: AudioContextOptions) => AudioContext;
-        const getAudioContextCtor = (): AudioContextCtor => {
-          const w = window as Window & {
-            webkitAudioContext?: AudioContextCtor;
-            AudioContext?: AudioContextCtor;
-          };
-          if (w.AudioContext) return w.AudioContext;
-          if (w.webkitAudioContext) return w.webkitAudioContext;
-          throw new Error('Web Audio API not supported');
-        };
-        audioContextRef.current = new (getAudioContextCtor())({
-          sampleRate: 44100,
-        });
-
-        const bufferSize = 2048;
-        audioProcessorRef.current = audioContextRef.current.createScriptProcessor(bufferSize, 0, 1);
-
-        audioProcessorRef.current.onaudioprocess = (e) => {
-          const output = e.outputBuffer.getChannelData(0);
-          const buffer = sampleBufferRef.current;
-
-          for (let i = 0; i < output.length; i++) {
-            if (buffer.length > 0) {
-              // Buffer contains the mixed (DC-free) integer sample ~[-32764, +32764]
-              output[i] = (buffer.shift()! / 32768);
+        // Try to fetch a BIOS over HTTP: prefer mpr-10052.rom, then bios13fx.sms
+        const tryUrls = ['mpr-10052.rom', 'bios13fx.sms'];
+        let biosData: Uint8Array | null = null;
+        for (const url of tryUrls) {
+          try {
+            console.log(`[web] Trying BIOS fetch: ${url}`);
+            const res = await fetch(url, { cache: 'no-cache' });
+            if (res.ok) {
+              const ab = await res.arrayBuffer();
+              const bytes = new Uint8Array(ab);
+              if (bytes.length > 0) {
+                biosData = bytes;
+                console.log(`[web] BIOS fetch success: ${url} (${bytes.length} bytes)`);
+                break;
+              } else {
+                console.warn(`[web] BIOS fetch empty body: ${url}`);
+              }
             } else {
-              // Underflow: output silence, avoid clicks
-              output[i] = 0;
+              console.warn(`[web] BIOS fetch HTTP ${res.status}: ${url}`);
             }
+          } catch (e) {
+            console.warn(`[web] BIOS fetch error: ${url} - ${(e as Error).message}`);
           }
-        };
-      }
+        }
 
-      // Connect audio if not muted
-      if (!isMuted && audioProcessorRef.current) {
-        audioProcessorRef.current.connect(audioContextRef.current.destination);
+        if (!biosData) {
+          console.info('[web] No BIOS found, falling back to manual init');
+        } else {
+          console.info(`[web] Using BIOS (${biosData.length} bytes)`);
+        }
+
+        const machine = biosData
+          ? createMachine({ cart: cartridge, useManualInit: false, bus: { bios: biosData } })
+          : createMachine({ cart: cartridge, useManualInit: true });
+        if (cancelled) return;
+        machineRef.current = machine;
+        console.log(`[web] Boot mode: ${biosData ? 'BIOS' : 'ManualInit'}`);
+
+        // Expose minimal debug helpers for web console
+        try {
+          (globalThis as any).EMULATOR = machine;
+          (globalThis as any).EMU_PRESS_B1 = (): void => {
+            const c = machine.getController1();
+            c.setState({ button1: true });
+            setTimeout(() => c.setState({ button1: false }), 200);
+          };
+          (globalThis as any).EMU_PRESS_START = (): void => {
+            const c = machine.getController1();
+            c.setState({ start: true });
+            setTimeout(() => c.setState({ start: false }), 200);
+          };
+          // Install a lightweight in-browser cycle/window tracer
+          (globalThis as any).EMU_TRACE_WINDOW = (ms = 500, pcMin = 0x8b00, pcMax = 0x8cff): Promise<string[]> => {
+            const lines: string[] = [];
+            const cpu = machine.getCPU();
+            const vdp = machine.getVDP();
+            const start = performance.now();
+            machine.setCycleHook(() => {
+              const st = cpu.getState();
+              const pc = st.pc & 0xffff;
+              if (pc >= (pcMin & 0xffff) && pc <= (pcMax & 0xffff)) {
+                const irq = vdp.hasIRQ() ? 1 : 0;
+                lines.push(`${pc.toString(16).padStart(4,'0')} IFF1=${st.iff1?1:0} IRQ=${irq}`);
+              }
+              if (performance.now() - start >= ms) {
+                machine.setCycleHook(null);
+              }
+            });
+            return new Promise(resolve => setTimeout(() => resolve(lines), ms + 50));
+          };
+        } catch {}
+
+        // Initialize audio context
+        if (!audioContextRef.current) {
+          type AudioContextCtor = new (contextOptions?: AudioContextOptions) => AudioContext;
+          const getAudioContextCtor = (): AudioContextCtor => {
+            const w = window as Window & {
+              webkitAudioContext?: AudioContextCtor;
+              AudioContext?: AudioContextCtor;
+            };
+            if (w.AudioContext) return w.AudioContext;
+            if (w.webkitAudioContext) return w.webkitAudioContext;
+            throw new Error('Web Audio API not supported');
+          };
+          audioContextRef.current = new (getAudioContextCtor())({
+            sampleRate: 44100,
+          });
+
+          const bufferSize = 2048;
+          audioProcessorRef.current = audioContextRef.current.createScriptProcessor(bufferSize, 0, 1);
+
+          audioProcessorRef.current.onaudioprocess = (e) => {
+            const output = e.outputBuffer.getChannelData(0);
+            const buffer = sampleBufferRef.current;
+
+            for (let i = 0; i < output.length; i++) {
+              if (buffer.length > 0) {
+                // Buffer contains the mixed (DC-free) integer sample ~[-32764, +32764]
+                output[i] = (buffer.shift()! / 32768);
+              } else {
+                // Underflow: output silence, avoid clicks
+                output[i] = 0;
+              }
+            }
+          };
+        }
+
+        // Connect audio if not muted
+        if (!isMuted && audioProcessorRef.current) {
+          audioProcessorRef.current.connect(audioContextRef.current.destination);
+        }
+      } catch (error) {
+        console.error('Error initializing machine:', error);
+        onStatusUpdate(`Error: ${(error as Error).message}`);
       }
-    } catch (error) {
-      console.error('Error initializing machine:', error);
-      onStatusUpdate(`Error: ${(error as Error).message}`);
-    }
+    })();
+
+    return () => { cancelled = true; };
   }, [romData, onStatusUpdate]);
 
   // Handle mute/unmute
