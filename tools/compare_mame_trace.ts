@@ -206,8 +206,10 @@ const main = async (): Promise<void> => {
   const WAIT_INCLUDE = process.env.WAIT_INCLUDE === '1' || process.env.WAIT_INCLUDE === 'true';
   const WAIT_VDP_PENALTY = process.env.WAIT_VDP_PENALTY ? parseInt(process.env.WAIT_VDP_PENALTY, 10) : 4;
 
+  const USE_BIOS = process.env.USE_BIOS === '1' || process.env.USE_BIOS === 'true';
   const machine = createMachine({
     cart,
+    useManualInit: !USE_BIOS,
     bus: { allowCartRam: true, bios: biosBytes },
     wait: WAIT_SMS ? { smsModel: true, includeWaitInCycles: WAIT_INCLUDE, vdpPenalty: WAIT_VDP_PENALTY } : undefined,
     // Enable fast block ops so LDIR/LDDR collapse into a single step, aligning better with MAME's collapsed trace

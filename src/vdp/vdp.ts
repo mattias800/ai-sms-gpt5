@@ -123,6 +123,8 @@ interface VdpState {
   lastSpriteDebug: VdpSpriteDebugEntry[];
   // latched display-enable for the current video frame to avoid mid-frame flicker in renderer
   displayEnabledThisFrame: boolean;
+  // Latched name table base (R2) at frame start for stable rendering
+  latchedNameBase: number;
   // debug counters
   vblankCount: number;
   statusReadCount: number;
@@ -203,6 +205,8 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
     lineCounter: 0,
     lastSpriteDebug: [],
     displayEnabledThisFrame: false,
+    // Latched name table base at frame start (init to 0)
+    latchedNameBase: 0,
     // debug counters
     vblankCount: 0,
     statusReadCount: 0,
@@ -211,58 +215,119 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
   // Some titles rely on autoincrement register; default to 1
   s.regs[15] = 1;
 
+  let debugCtrlCount = 0;
   const writeControl = (v: number): void => {
+    const vb = v & 0xff;
     if (s.latch === null) {
-      s.latch = v & 0xff;
+      s.latch = vb;
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
+          // eslint-disable-next-line no-console
+          console.log(`vdp-ctrl b0=0x${vb.toString(16).padStart(2,'0')}`);
+        }
+      } catch {}
     } else {
-      const low = s.latch;
-      const high = v & 0xff;
+      // Two control bytes received. Some software writes value first (low, then high=0x8R),
+      // but others may write high first (0x8R) then low. Support both orders (guarded by env) for register writes.
+      const b0 = s.latch & 0xff; // first byte written
+      const b1 = vb & 0xff;      // second byte written
       s.latch = null;
-      const code = (high >>> 6) & 0x03;
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
+          // eslint-disable-next-line no-console
+          console.log(`vdp-ctrl b0=0x${b0.toString(16).padStart(2,'0')} b1=0x${b1.toString(16).padStart(2,'0')}`);
+        }
+      } catch {}
+
+      // Standard order: low first (b0), then high (b1)
+      let low = b0 & 0xff;
+      let high = b1 & 0xff;
+      let code = (high >>> 6) & 0x03;
+
+      // Optional support for reversed-order register writes (0x8R first, then value), guarded by env flag
+      // and a strict early-boot window to avoid misinterpreting address pairs later in gameplay.
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.SMS_ALLOW_REVERSED_VDP_REG === '1') {
+          // Accept reversed-order register writes whenever the first byte is 0x8R (register index),
+          // and the second byte is the value. This is safe because non-register operations never use 0x8? high control bytes.
+          if (code !== 0x02) {
+            const looksLikeRegIdx = (b0 & 0xF0) === 0x80; // 0x80..0x8F only
+            // Additional guard: avoid hijacking legitimate address ops where the second byte is a control high byte (01xx_xxxx or 11xx_xxxx)
+            const secondLooksLikeCtrlHi = (b1 & 0xC0) !== 0x00; // 0x40..0xFF
+            if (looksLikeRegIdx && !secondLooksLikeCtrlHi) {
+              // Reinterpret as reversed only if that yields a register write
+              const hiTest = b0 & 0xff;
+              const codeTest = (hiTest >>> 6) & 0x03;
+              if (codeTest === 0x02) {
+                low = b1 & 0xff;
+                high = b0 & 0xff;
+                code = 0x02;
+              }
+            }
+          }
+        }
+      } catch {}
+
       if (code === 0x02) {
-        // Register write: index in low 4 bits, value is low byte
+        // Register write: index in low 4 bits of high, value is low byte
         const reg = high & 0x0f;
-        let value = low;
+        let value = low & 0xff;
+        try {
+          const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+          if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
+            // eslint-disable-next-line no-console
+            console.log(`vdp-reg R${reg}=0x${value.toString(16).padStart(2,'0')}`);
+          }
+        } catch {}
+        debugCtrlCount++;
 
         // Handle register 0 special case: M3 and M4 mode bits conflict
         if (reg === 0) {
-          // Check if both M3 (bit 1) and M4 (bit 2) are set
           const m3 = (value & 0x02) !== 0;
           const m4 = (value & 0x04) !== 0;
-          if (m3 && m4) {
-            // Mode 4 takes precedence - clear M3 bit
-            value = value & ~0x02; // Clear bit 1 (M3)
-          }
+          if (m3 && m4) value &= ~0x02; // Prefer Mode 4
         }
 
         s.regs[reg] = value;
         if (reg === 1) {
           // VBlank IRQ enable is bit 5 of reg1.
-          // Accurate behavior: enabling during active vblank should only assert immediately if the VBlank flag (status bit 7) is currently set.
-          // If the status flag has been cleared by a status port read, the IRQ line should not re-assert until the next vblank start.
           const irqEnabled = (value & 0x20) !== 0;
           if (!irqEnabled) {
             s.irqVLine = false;
           } else {
-            // Assert immediately only if the vblank flag is set at this moment
             if ((s.status & 0x80) !== 0) s.irqVLine = true;
           }
         } else if (reg === 10) {
-          // Line interrupt counter reload
           s.lineCounter = value & 0xff;
         } else if (reg === 8) {
-          // Capture per-line H scroll value (approximate) at the current line
           const ln = s.line;
-          if (ln >= 0 && ln < s.linesPerFrame) s.hScrollLine[ln] = value & 0xff;
+          let idx = ln;
+          try {
+            const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+            if (env && env.SMS_SCROLL_NEXT_LINE === '1') {
+              idx = (ln + 1) % (s.linesPerFrame | 0);
+            }
+          } catch {}
+          if (idx >= 0 && idx < s.linesPerFrame) s.hScrollLine[idx] = value & 0xff;
         } else if (reg === 15) {
-          // Guard against 0 auto-increment to avoid infinite loops in stub
           s.autoInc = value || 1;
           s.regs[15] = s.autoInc;
         }
       } else {
         // Address setup and operation code: code 0=VRAM read, 1=VRAM write, 3=CRAM write (SMS)
-        s.addr = ((high & 0x3f) << 8) | low; // 14-bit addr
+        s.addr = ((high & 0x3f) << 8) | (low & 0xff); // 14-bit addr
         s.code = code & 0x03;
+        try {
+          const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+          if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
+            // eslint-disable-next-line no-console
+            console.log(`vdp-addr code=${code} addr=0x${s.addr.toString(16).padStart(4,'0')}`);
+          }
+        } catch {}
+        debugCtrlCount++;
       }
     }
   };
@@ -270,7 +335,7 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
   const readPort = (port: number): number => {
     const p = port & 0xff;
     // H/V counters are readable via ports 0x7E/0x7F on SMS
-    if (p === 0x7e) {
+    if ((p & 0xff) === 0x7e || (p & 0xff) === 0x9e) {
       // Approximate SMS HCounter behavior.
       // - 0..cyclesPerLine-1 maps to 0..255 (raw).
       // - Hold 0x00 briefly at start of line (front porch), and 0xB0 near end (hblank).
@@ -305,16 +370,24 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
       s.lastHcLine = s.line;
       return hc & 0xff;
     }
-    if (p === 0x7f) {
+    if ((p & 0xff) === 0x7f || (p & 0xff) === 0x9f) {
       // Approximate SMS VCounter: 0..(vblankStartLine-1) -> 0x00.., VBlank region -> 0xC0.. up
       const inVBlank = s.line >= s.vblankStartLine;
       const v = inVBlank ? 0xc0 + (s.line - s.vblankStartLine) : s.line;
       return v & 0xff;
     }
-if (p === 0xbf) {
+if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
       // Status read: return and clear VBlank/line irq flags
-      const vPrev = s.status & 0xff;
+      let vPrev = s.status & 0xff;
       const irqPrev = !!s.irqVLine;
+      // Optional boot aid: allow forcing VBlank flag in status reads for stubborn BIOS boots (debug only)
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.VDP_FORCE_BIOS_VBLANK === '1') {
+          // Force vblank seen by BIOS status polls (debug aid)
+          vPrev |= 0x80;
+        }
+      } catch {}
       // Clear VBlank flag (bit 7) and line IRQ status (bit 5 proxy), and drop IRQ wire
       s.status &= ~0x80;
       s.status &= ~0x20;
@@ -338,28 +411,37 @@ if (p === 0xbf) {
     return v;
   };
 
+  let debugDataCount = 0;
   const writePort = (port: number, val: number): void => {
     const p = port & 0xff;
     const v = val & 0xff;
-    if (p === 0xbf) {
+    if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
+      // Accept both canonical control port (0xBF) and common mirror (0xDF)
       writeControl(v);
       return;
     }
-    // 0xbe data port write: handle VRAM or CRAM writes depending on code
-    if (p === 0xbe) {
+    // 0xbe data port write: handle VRAM or CRAM writes depending on code (also accept 0xDE mirror)
+    if ((p & 0xff) === 0xbe || (p & 0xff) === 0xde) {
+      const isCRAM = s.code === 3;
+      const a = s.addr & 0x3fff;
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.DEBUG_VDP_DATA_LOG === '1' && debugDataCount < 500) {
+          // eslint-disable-next-line no-console
+          console.log(`vdp-data ${(isCRAM?'CRAM':'VRAM')} addr=0x${a.toString(16).padStart(4,'0')} val=0x${v.toString(16).padStart(2,'0')} code=${s.code}`);
+          debugDataCount++;
+        }
+      } catch {}
       // Data port writes: treat code 3 as CRAM; otherwise VRAM.
-      // This matches test expectations and common VDP behavior where data writes go to VRAM
-      // regardless of the read/write address setup code, except when explicitly set to CRAM (code 3).
-      if (s.code === 3) {
+      if (isCRAM) {
         // CRAM write (SMS)
-        const idx = s.addr & 0x1f; // 32 entries
+        const idx = a & 0x1f; // 32 entries
         s.cram[idx] = v & 0x3f; // 6-bit RGB on SMS
         s.cramWrites++;
         s.lastCramIndex = idx;
         s.lastCramValue = v & 0x3f;
       } else {
         // VRAM write (for code 0 or 1)
-        const a = s.addr & 0x3fff;
         s.vram[a] = v;
         s.vramWrites++;
         if (v !== 0) {
@@ -421,6 +503,8 @@ if (p === 0xbf) {
         s.line = 0;
         // Latch display-enable for this upcoming frame to avoid mid-frame flicker
         s.displayEnabledThisFrame = ((s.regs[1] ?? 0) & 0x40) !== 0;
+        // Latch name table base for this frame (R2[3:1] << 11)
+        s.latchedNameBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11;
         // Reset per-line scroll buffer to current global value
         s.hScrollLine.fill(s.regs[8] ?? 0);
         // Do not auto-clear VBlank or line IRQ status at frame start; these flags are sticky until status is read.
@@ -442,7 +526,8 @@ if (p === 0xbf) {
     const displayEnabled = (r1 & 0x40) !== 0;
     // Fix address calculations to match SMS hardware
     // Name table is at bits 3-1 of R2 (not 7-1) for Mode 4
-    const nameTableBase = (((regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11 (0x0000, 0x0800, 0x1000...0x3800)
+    const nameTableBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11 (0x0000, 0x0800, 0x1000...0x3800)
+    // In SMS Mode 4 (Master System), BG pattern base is fixed at 0x0000.
     const bgPatternBase = 0x0000;
     const spriteAttrBase = ((regs[5] ?? 0) & 0x7e) << 7; // R5[6:1] << 7
     const spritePatternBase = (regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // R6[2] selects 0x0000 or 0x2000
@@ -515,6 +600,20 @@ if (p === 0xbf) {
     // Check display enable directly from R1 for testability (avoid frame-latched gating in unit tests)
     const displayEnabled = ((s.regs[1] ?? 0) & 0x40) !== 0;
     if (!displayEnabled) {
+      // Optionally force a visible blue screen for debugging when display is disabled
+      try {
+        const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+        if (env && env.VDP_FORCE_BLUE === '1') {
+          // Light blue-ish (CRAM 0x3C -> RR=0, GG=3, BB=3 -> (0,255,255))
+          const r = 0, g = 255, b = 255;
+          for (let i = 0; i < frameBuffer.length; i += 3) {
+            frameBuffer[i] = r;
+            frameBuffer[i + 1] = g;
+            frameBuffer[i + 2] = b;
+          }
+          return frameBuffer;
+        }
+      } catch {}
       // Keep returning a black buffer (SMS blanks output when display disabled)
       return frameBuffer;
     }
@@ -525,8 +624,28 @@ if (p === 0xbf) {
     // Pattern table for BG: ALWAYS at 0x0000 in SMS Mode 4 (R4 is unused for BG patterns)
     // Sprite attribute table: R5[6:1] defines A13-A7 (shifted left 7)
     // Sprite pattern: 0x0000 if R6[2]=0, 0x2000 if R6[2]=1
-    const nameTableBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11; // R2[3:1] << 11
-    const patternBase = 0x0000; // SMS Mode 4 BG pattern base fixed at 0x0000
+    // Derive name table base from R2; default behavior for tests
+    let nameTableBase = (((s.regs[2] ?? 0) >> 1) & 0x07) << 11;
+    const patternBase = 0x0000; // BG pattern base fixed at 0x0000 on SMS Mode 4
+    // Optional heuristic: when enabled via env, pick the most populated window for rendering (compat aid).
+    try {
+      const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+      const auto = env && env.SMS_NAMETABLE_AUTO === '1';
+      if (auto) {
+        // Count non-zero bytes for each 0x800-aligned 1KB region
+        let bestBase = nameTableBase;
+        let bestCount = -1;
+        for (let i = 0; i < 8; i++) {
+          const base = (i << 11) & 0x3fff;
+          let nz = 0;
+          for (let j = 0; j < 0x400; j++) { if ((s.vram[(base + j) & 0x3fff] ?? 0) !== 0) nz++; }
+          if (nz > bestCount) { bestCount = nz; bestBase = base; }
+        }
+        let chosenCount = 0;
+        for (let j = 0; j < 0x400; j++) { if ((s.vram[(nameTableBase + j) & 0x3fff] ?? 0) !== 0) chosenCount++; }
+        if (bestCount > chosenCount) nameTableBase = bestBase;
+      }
+    } catch {}
     const spriteAttrBase = ((s.regs[5] ?? 0) & 0x7e) << 7; // Bits 6-1 of R5
     const spritePatternBase = (s.regs[6] ?? 0) & 0x04 ? 0x2000 : 0x0000; // Bit 2 of R6
     const bgColor = (s.regs[7] ?? 0) & 0x0f; // Background color index
@@ -541,13 +660,15 @@ if (p === 0xbf) {
       return [r, g, b];
     };
 
-    // Fill with background color (using BG palette, first 16 colors)
-    const [bgR, bgG, bgB] = paletteToRGB(bgColor); // Background color from BG palette
+    // Fill with border color (R7) initially; active display pixels will overwrite with CRAM[0] for color index 0
+    const [borderR, borderG, borderB] = paletteToRGB(bgColor);
     for (let i = 0; i < 256 * 192; i++) {
-      frameBuffer[i * 3] = bgR;
-      frameBuffer[i * 3 + 1] = bgG;
-      frameBuffer[i * 3 + 2] = bgB;
+      frameBuffer[i * 3] = borderR;
+      frameBuffer[i * 3 + 1] = borderG;
+      frameBuffer[i * 3 + 2] = borderB;
     }
+    // In SMS Mode 4, BG color index 0 uses the background color selected by R7 (border color), not CRAM[0].
+    // We already computed borderR/G/B from R7 above; reuse it for BG color 0 pixels.
 
     // Get scrolling values
     const hScrollGlobal = s.regs[8] ?? 0; // Horizontal scroll (0-255)
@@ -580,8 +701,13 @@ if (p === 0xbf) {
         // Mode 4 name table attributes (adapted for tests):
         // bit0 = pattern bit8, bit1 = H flip, bit2 = V flip, bit3 = priority (BG over sprites)
         const tileNum = nameLow | ((nameHigh & 0x01) << 8); // use only bit0 for pattern high
-        const hFlip = (nameHigh & 0x02) !== 0;
-        const vFlip = (nameHigh & 0x04) !== 0;
+        let hFlip = (nameHigh & 0x02) !== 0;
+        let vFlip = (nameHigh & 0x04) !== 0;
+        // Optional diagnostic: ignore BG flips via env override (some SMS titles misuse bits differently)
+        try {
+          const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+          if (env && env.SMS_BG_IGNORE_FLIP === '1') { hFlip = false; vFlip = false; }
+        } catch {}
         const priority = (nameHigh & 0x08) !== 0;
 
         // Don't skip tile 0 for background - it's valid
@@ -618,16 +744,24 @@ if (p === 0xbf) {
 
         // Leftmost 8 pixels can be forced blank (border color) via R0 bit5
         if (leftBlank && screenX < 8) {
-          frameBuffer[fbIdx] = bgR;
-          frameBuffer[fbIdx + 1] = bgG;
-          frameBuffer[fbIdx + 2] = bgB;
+          // Leftmost 8 pixels (if blank) use border color (already pre-filled)
+          frameBuffer[fbIdx] = borderR;
+          frameBuffer[fbIdx + 1] = borderG;
+          frameBuffer[fbIdx + 2] = borderB;
         } else {
-          // On Master System (Mode 4), BG tiles always use the background palette (0..15).
-          // The palette select bit is only meaningful on Game Gear; ignore it here.
-          const [r, g, b] = paletteToRGB(colorIdx & 0x0f);
-          frameBuffer[fbIdx] = r;
-          frameBuffer[fbIdx + 1] = g;
-          frameBuffer[fbIdx + 2] = b;
+          // On Master System (Mode 4):
+          // - BG tiles use the background palette (0..15)
+          // - Color index 0 uses the background color selected by R7 (same as border color)
+          if ((colorIdx & 0x0f) === 0) {
+            frameBuffer[fbIdx] = borderR;
+            frameBuffer[fbIdx + 1] = borderG;
+            frameBuffer[fbIdx + 2] = borderB;
+          } else {
+            const [r, g, b] = paletteToRGB(colorIdx & 0x0f);
+            frameBuffer[fbIdx] = r;
+            frameBuffer[fbIdx + 1] = g;
+            frameBuffer[fbIdx + 2] = b;
+          }
           // Record priority mask only when non-zero BG pixel
           if (priority && colorIdx !== 0) {
             const idx = screenY * 256 + screenX;

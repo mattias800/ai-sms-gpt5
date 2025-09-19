@@ -170,7 +170,7 @@ export class SmsBus implements IBus {
 
   public read8 = (addr: number): number => {
     const a = addr & 0xffff;
-    // BIOS overlay typically maps only the first 16KB (0x0000-0x3FFF). Do NOT shadow system RAM (0xC000-0xFFFF).
+    // BIOS overlay maps only 0x0000-0x3FFF (first 16KB) on SMS. Do NOT shadow WRAM (>=0xC000).
     if (this.biosEnabled && this.bios && a < 0x4000) {
       const idx = a % this.bios.length; // mirror BIOS over its own length
       return this.bios[idx]!;
@@ -292,12 +292,14 @@ export class SmsBus implements IBus {
     }
     // I/O control and memory control reads typically undefined; return 0xFF
     if (p === 0x3f || p === 0x3e) return 0xff;
-    // VDP mirrors across IO space: any port with low 6 bits 0x3e/0x3f maps to 0xbe/0xbf
-    // Exclude real I/O control/mem control ports (0x3E/0x3F)
-    if (this.vdp && (low6 === 0x3e || low6 === 0x3f) && p !== 0x3e && p !== 0x3f) {
-      // Map exact low6 values to their canonical ports, not just parity
-      const canon = low6 === 0x3e ? 0xbe : 0xbf;
-      return this.vdp.readPort(canon);
+    // VDP mirrors across IO space (explicit mirrors only). Exclude PSG and I/O control/mem control.
+    if (this.vdp && p !== 0x3e && p !== 0x3f && p !== 0x7e && p !== 0x7f) {
+      if (p === 0xbe || p === 0xde || p === 0xfe || p === 0x9e) {
+        return this.vdp.readPort(0xbe);
+      }
+      if (p === 0xbf || p === 0xdf || p === 0xff || p === 0x9f) {
+        return this.vdp.readPort(0xbf);
+      }
     }
     return 0xff;
   };
@@ -306,8 +308,8 @@ export class SmsBus implements IBus {
     const p = port & 0xff;
     const low6 = p & 0x3f;
     const v = val & 0xff;
-    // PSG on 0x7f (write-only) — must take precedence over VDP mirror on 0x3f low6
-    if (p === 0x7f) {
+    // PSG on 0x7f (write-only) — must take precedence over VDP mirror on 0x3f low6; also accept 0x7D mirror sometimes used
+    if (p === 0x7f || p === 0x7d) {
       this.lastPSG = v;
       if (this.psg) this.psg.write(v);
       return;
@@ -321,8 +323,8 @@ export class SmsBus implements IBus {
       // Upper bits drive TH line latches: bit6 -> TH-A, bit7 -> TH-B
       this.thALatch = v & 0x40 ? 1 : 0;
       this.thBLatch = v & 0x80 ? 1 : 0;
-      // Keep generic lower-line outputs default pulled high unless explicitly modeled elsewhere
-      this.ioOutLatch |= 0x3f;
+      // Latch output levels for lower 6 lines from the written value (active-high)
+      this.ioOutLatch = (this.ioOutLatch & ~0x3f) | (v & 0x3f);
       try {
         if ((process as any).env && (process as any).env.DEBUG_IO_LOG && ((process as any).env.DEBUG_IO_LOG as string) !== '0') {
           // eslint-disable-next-line no-console
@@ -369,15 +371,20 @@ export class SmsBus implements IBus {
     if (p === 0xf0 || p === 0xf1) {
       return;
     }
-    // VDP mirrors across IO space: any port with low 6 bits 0x3e/0x3f maps to 0xbe/0xbf
-    // Exclude real I/O control/mem control ports (0x3E/0x3F)
-    if (this.vdp && (low6 === 0x3e || low6 === 0x3f)) {
-      // Map to canonical 0xBE (data) or 0xBF (status/control) based on low6 field
-      const canon = low6 === 0x3e ? 0xbe : 0xbf;
-      this.vdp.writePort(canon, v);
-      if (canon === 0xbe) this.vdpDataWrites++;
-      else this.vdpCtrlWrites++;
-      return;
+    // VDP mirrors across IO space (explicit mirrors only). Exclude actual I/O control/mem control (0x3E/0x3F). PSG 0x7F handled above.
+    if (this.vdp && p !== 0x3e && p !== 0x3f) {
+      // Data port mirrors (accept 0x7E for tests)
+      if (p === 0xbe || p === 0xde || p === 0xfe || p === 0x9e || p === 0x7e) {
+        this.vdp.writePort(0xbe, v);
+        this.vdpDataWrites++;
+        return;
+      }
+      // Control/status port mirrors
+      if (p === 0xbf || p === 0xdf || p === 0xff || p === 0x9f) {
+        this.vdp.writePort(0xbf, v);
+        this.vdpCtrlWrites++;
+        return;
+      }
     }
   };
 

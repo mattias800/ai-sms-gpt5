@@ -1241,14 +1241,17 @@ const readIO8 = (port: number): number => {
         const hl = ((s.h << 8) | s.l) & 0xffff;
         const cVal = s.c & 0xff;
 
-        // Read/write value
+        // Timing: account for initial internal T-states before bus phases
+        perOpTick(1); // internal preamble (approx)
+
+        // Read/write value with proper bus phase ticking
         let ioVal = 0;
         if (isIn) {
-          ioVal = readIO8(cVal) & 0xff;
-          write8(hl, ioVal);
+          ioVal = readIO8(cVal) & 0xff;  // IO read: ticks 4
+          write8(hl, ioVal);              // Mem write: ticks 3
         } else {
-          ioVal = read8(hl) & 0xff;
-          writeIO8(cVal, ioVal);
+          ioVal = read8(hl) & 0xff;       // Mem read: ticks 3
+          writeIO8(cVal, ioVal);          // IO write: ticks 4
         }
 
         // Update HL (+/- 1)
@@ -1260,17 +1263,17 @@ const readIO8 = (port: number): number => {
         const b2 = (s.b - 1) & 0xff;
         s.b = b2;
 
-        // Compute helper t used for H/C and F3/F5 (common emulator formula)
+        // Compute helper t used for H/C and F3/F5 (common emulator formula for block I/O flags)
         const cAdj = isDec ? (cVal - 1) & 0xff : (cVal + 1) & 0xff;
-        const sum = ioVal + cAdj;
+        const sum = (ioVal + cAdj) & 0x1ff;
         const t = sum & 0xff;
-        const carry = sum > 0xff;
+        const carry = (sum & 0x100) !== 0;
 
         // Flags per Z80 behavior approximation for block I/O:
         // - S/Z reflect B' (after decrement)
         // - PV set if B' != 0
         // - H and C set from carry of (ioVal + (C±1))
-        // - N: for INx, set; for OUTx, set from bit7 of ioVal (approximation)
+        // - N: INx set N=1; OUTx set N from bit7 of ioVal (approximation)
         // - F3/F5 from t (undocumented)
         let f = 0;
         if (b2 & 0x80) f |= FLAG_S;
@@ -1278,20 +1281,27 @@ const readIO8 = (port: number): number => {
         if (b2 !== 0) f |= FLAG_PV;
         if (carry) f |= FLAG_H | FLAG_C;
         if (isIn) {
-          f |= FLAG_N; // INI/IND set N
+          f |= FLAG_N;
         } else {
-          if (ioVal & 0x80) f |= FLAG_N; // OUTI/OUTD set N from bit7 of data (approx)
+          if (ioVal & 0x80) f |= FLAG_N;
         }
         if (t & 0x20) f |= FLAG_5;
         if (t & 0x08) f |= FLAG_3;
         s.f = f & 0xff;
 
-        // Repeat handling
+        // Pad internal T-states to reach Z80 timing (M1=4 already accounted during fetchOpcode)
+        // Bus phases within this op contributed ~7 T-states (mem 3 + io 4 or io 4 + mem 3).
+        // Non-repeat: 16 total -> pad 5; Repeat: 21 total -> pad 10.
         if (isRepeat && b2 !== 0) {
+          // Repeat case
+          perOpTick(10);
           s.pc = (s.pc - 2) & 0xffff;
           return mkRes(21, false, false);
+        } else {
+          // Final iteration
+          perOpTick(5);
+          return mkRes(16, false, false);
         }
-        return mkRes(16, false, false);
       }
       // RRD (ED 67)
       if (sub === 0x67) {

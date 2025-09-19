@@ -115,9 +115,26 @@ const initializeVDP = (vdp: IVDP): void => {
   vdp.writePort(0xBF, 0x86); // Register 6
 
   // VDP Register 7: Background Color
-  // Set to black (color 0)
+  // Set to black (color 0) by default; may be overridden by optional init below
   vdp.writePort(0xBF, 0x00); // Value
   vdp.writePort(0xBF, 0x87); // Register 7
+
+  // Optional: Preload CRAM to non-black (blue) to mimic early splash palette.
+  // Controlled via env SMS_INIT_BLUE_BG=1 so default test behavior is unchanged.
+  try {
+    const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+    if (env && env.SMS_INIT_BLUE_BG && env.SMS_INIT_BLUE_BG !== '0') {
+      // Program CRAM address 0 and write 32 entries of full blue (00BBGGRR, B=3 -> 0x30)
+      const cramVal = 0x30 & 0x3f;
+      // Set control address to 0x0000 with code=3 (CRAM)
+      vdp.writePort(0xBF, 0x00);
+      vdp.writePort(0xBF, 0xC0);
+      for (let i = 0; i < 32; i++) vdp.writePort(0xBE, cramVal);
+      // Ensure background color index points to a visible entry (0)
+      vdp.writePort(0xBF, 0x00);
+      vdp.writePort(0xBF, 0x87); // R7 <- 0
+    }
+  } catch {}
 
   // VDP Register 8: Horizontal Scroll
   vdp.writePort(0xBF, 0x00); // Value

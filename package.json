@@ -46,7 +46,8 @@
     "focus:run": "npx tsx tools/focus_run.ts",
     "rom:im1": "npx tsx tools/roms/make_im1_test.ts",
     "trace:im1": "SMS_ROM=./roms/im1_test.sms TRACE_SECONDS=2 KILL_AFTER_MS=5000 npm run --silent trace:sms",
-    "compare:im1": "SMS_ROM=./roms/im1_test.sms ALIGN_PC=0038 MAX_STEPS=50 npm run --silent compare:mame"
+    "compare:im1": "SMS_ROM=./roms/im1_test.sms ALIGN_PC=0038 MAX_STEPS=50 npm run --silent compare:mame",
+    "wb:logo": "WONDERBOY_SMS_ROM=./wonderboy5.sms SMS_BIOS_ROM=./mpr-12808.ic2 vitest run tests/games/wonderboy_boot_logo.test.ts || true; if [ -f out/wonderboy_120f.png ]; then open out/wonderboy_120f.png; else npx tsx tools/probe_wb_120.ts && open out/wb_120_debug.png; fi"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",

@@ -63,7 +63,50 @@ local function on_frame()
   f:flush()
 end
 
-emu.register_frame_done(on_frame)
+-- Prefer per-instruction tracing if available; otherwise fall back to per-frame
+local hooked = false
+
+-- Try to install an instruction hook on :maincpu
+local ok, err = pcall(function()
+  if cpu and cpu.debug and cpu.debug.set_instruction_hook then
+    cpu.debug:set_instruction_hook(function()
+      -- reuse on_frame body but without incrementing frame
+      local s = cpu.state
+      local function gv(name)
+        local e = s[name]
+        if e == nil then return 0 end
+        local v = e.value
+        if v == nil then return 0 end
+        return v
+      end
+      local pc = gv('PC')
+      local opcode = 0
+      pcall(function() opcode = cpu.spaces['program']:read_u8(pc) end)
+      local af = gv('AF') & 0xFFFF
+      local bc = gv('BC') & 0xFFFF
+      local de = gv('DE') & 0xFFFF
+      local hl = gv('HL') & 0xFFFF
+      local ix = gv('IX') & 0xFFFF
+      local iy = gv('IY') & 0xFFFF
+      local sp = gv('SP') & 0xFFFF
+      local ireg = gv('I') & 0xFF
+      local rreg = gv('R') & 0xFF
+      local iff1 = (gv('IFF1') ~= 0) and 1 or 0
+      local iff2 = (gv('IFF2') ~= 0) and 1 or 0
+      local im = gv('IM') & 0xFF
+      local halt = (gv('HALT') ~= 0) and 1 or 0
+      f:write(string.format('frame=%d cycle=%d PC=%04X OPC=%02X AF=%04X BC=%04X DE=%04X HL=%04X IX=%04X IY=%04X SP=%04X I=%02X R=%02X IFF1=%d IFF2=%d IM=%02X HALT=%d\n',
+        frame, 0, pc & 0xFFFF, opcode & 0xFF, af, bc, de, hl, ix, iy, sp, ireg, rreg, iff1, iff2, im, halt))
+      f:flush()
+    end)
+    hooked = true
+  end
+end)
+
+if not hooked then
+  -- Fall back to one line per frame
+  emu.register_frame_done(on_frame)
+end
 
 emu.register_stop(function()
   f:flush()
