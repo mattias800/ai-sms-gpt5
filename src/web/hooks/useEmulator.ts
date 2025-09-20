@@ -90,6 +90,7 @@ export const useEmulator = ({
         machineRef.current = machine;
         console.log(`[web] Boot mode: ${biosData ? 'BIOS' : 'ManualInit'}`);
 
+
         // Expose minimal debug helpers for web console
         try {
           (globalThis as any).EMULATOR = machine;
@@ -304,7 +305,7 @@ export const useEmulator = ({
 
   // Main emulation loop
   useEffect(() => {
-    if (!machineRef.current || !canvasRef.current || isPaused) {
+    if (!machineRef.current || !canvasRef.current) {
       return;
     }
 
@@ -329,6 +330,26 @@ export const useEmulator = ({
 
       try {
         const machine = machineRef.current;
+        
+        // Skip emulation if paused, but still render the current frame
+        if (isPaused) {
+          // Render current frame even when paused
+          const vdp = machine.getVDP();
+          if (vdp.renderFrame) {
+            const frameBuffer = vdp.renderFrame();
+            const data = imageData.data;
+            for (let i = 0; i < 256 * 192; i++) {
+              const srcIdx = i * 3;
+              const dstIdx = i * 4;
+              data[dstIdx] = frameBuffer[srcIdx] ?? 0;
+              data[dstIdx + 1] = frameBuffer[srcIdx + 1] ?? 0;
+              data[dstIdx + 2] = frameBuffer[srcIdx + 2] ?? 0;
+              data[dstIdx + 3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+          }
+          return;
+        }
 
         // Derive hardware timing
         const vdpState = machine.getVDP().getState ? machine.getVDP().getState?.() : undefined;

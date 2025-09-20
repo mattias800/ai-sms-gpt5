@@ -9,7 +9,7 @@ import './App.css';
 export const App: React.FC = () => {
   const [romData, setRomData] = useState<Uint8Array | null>(null);
   const [romName, setRomName] = useState<string>('');
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [fps, setFps] = useState(0);
   const [status, setStatus] = useState('Ready to load ROM...');
@@ -33,6 +33,7 @@ export const App: React.FC = () => {
     setRomData(data);
     setRomName(name);
     setStatus(`Loaded: ${name} (${(data.length / 1024).toFixed(1)} KB)`);
+    // Auto-start emulation when ROM is loaded
     setIsPaused(false);
   }, []);
 

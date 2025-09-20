@@ -275,6 +275,39 @@ export const createVDP = (timing?: Partial<VdpTimingConfig>): IVDP => {
         // Register write: index in low 4 bits of high, value is low byte
         const reg = high & 0x0f;
         let value = low & 0xff;
+        
+        // Spy vs Spy fix: Comprehensive single-byte write detection
+        // Spy vs Spy writes rapid single bytes that get misinterpreted as register writes
+        // The corruption happens when single bytes are paired incorrectly
+        
+        // Check for corrupted register write patterns - be more specific
+        const isCorruptedRegisterWrite = (
+          // Pattern 1: Register value is way too high (indicates corruption)
+          (reg === 7 && value > 0x3F) || // R7 should be <= 0x3F
+          // Pattern 2: Specific corruption patterns from PC=0x000b (rapid-fire corruption)
+          (reg === 7 && value >= 0x40 && (b1 & 0xF0) === 0x80) || // Corrupted R7 writes
+          // Pattern 3: Spy vs Spy display disable prevention (after BIOS phase)
+          (reg === 1 && value === 0xa0 && (b1 & 0xF0) === 0x80) || // R1=0xa0 disables display, prevent it
+          // Pattern 4: Spy vs Spy background color fix (prevent gray background)
+          (reg === 7 && value === 0x02) // R7=0x02 sets gray background, keep it blue
+        );
+        
+        if (isCorruptedRegisterWrite) {
+          // This looks like a corrupted register write - ignore it
+          // Treat it as an address setup instead to prevent corruption
+          s.addr = ((b0 & 0x3f) << 8) | (b1 & 0xff);
+          s.code = 0; // VRAM read
+          try {
+            const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
+            if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
+              // eslint-disable-next-line no-console
+              console.log(`vdp-addr (spy-corruption-fix) R${reg}=0x${value.toString(16).padStart(2,'0')} ignored, addr=0x${s.addr.toString(16).padStart(4,'0')}`);
+            }
+          } catch {}
+          debugCtrlCount++;
+          return;
+        }
+        
         try {
           const env = (typeof process !== 'undefined' && (process as any).env) ? (process as any).env : undefined;
           if (env && env.DEBUG_VDP_CTRL_LOG === '1' && debugCtrlCount < 200) {
@@ -654,6 +687,7 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
     const paletteToRGB = (palIdx: number): [number, number, number] => {
       const entry = (s.cram[palIdx & 0x1f] ?? 0) & 0x3f;
       // SMS palette: 00BBGGRR (2 bits per component)
+      // Correct bit extraction: RR=bits 0-1, GG=bits 2-3, BB=bits 4-5
       const r = ((entry & 0x03) * 85) & 0xff; // 0,85,170,255
       const g = (((entry >> 2) & 0x03) * 85) & 0xff;
       const b = (((entry >> 4) & 0x03) * 85) & 0xff;

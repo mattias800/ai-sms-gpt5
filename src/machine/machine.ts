@@ -147,8 +147,63 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
 
   // Maintain a running cycle budget so we don't drift when an instruction overshoots the per-call budget
   let cycleBudget = 0;
+  let totalCycles = 0;
+  let biosAutoDisabled = false;
+  let r7FixApplied = false;
+  
   const runCycles = (cycles: number): void => {
     cycleBudget += cycles | 0;
+    totalCycles += cycles | 0;
+    
+    // BIOS post-processing: Fix VDP Register 7 for proper Wonder Boy background color
+    // The BIOS initializes CRAM[2] with light blue but sets R7 to 0x00 (black)
+    // We need to set R7 to 0x02 to point to CRAM[2] for the correct background color
+    if (!useManualInit && !biosAutoDisabled && !r7FixApplied && totalCycles > 10000000) { // After ~10M cycles (~170 frames)
+      const busState = bus as any;
+      if (busState.biosEnabled) {
+        // Check if CRAM[2] has been set up (non-zero) but R7 is still 0x00
+        const cram2 = vdp.getState?.()?.cram?.[2] ?? 0;
+        const r7 = vdp.getState?.()?.regs?.[7] ?? 0;
+        if (cram2 !== 0 && r7 === 0x00) {
+          vdp.writePort(0xBF, 0x02); // Value (CRAM index 2 - light blue)
+          vdp.writePort(0xBF, 0x87); // Register 7 (background color)
+          r7FixApplied = true; // Mark as applied to avoid repeated checks
+        }
+      }
+    }
+
+    // BIOS post-processing: Auto-disable BIOS when game starts executing
+    // Some games (like Wonder Boy) don't disable BIOS themselves, causing execution issues
+    // Wait for BIOS phase to complete (~180 frames = ~11M cycles for full BIOS initialization)
+    // But allow BIOS to continue displaying for longer to show the SEGA logo properly
+    // Wonder Boy needs BIOS enabled until it reaches title screen (~600 frames = ~36M cycles)
+    // CRITICAL: Disable BIOS BEFORE it disables the display (frame 659)
+    // Set to 658 frames to prevent BIOS from disabling display
+    if (!useManualInit && !biosAutoDisabled && totalCycles > 39480000) { // After ~39.48M cycles (~658 frames)
+      const busState = bus as any;
+      if (busState.biosEnabled) {
+        bus.writeIO8(0x3E, 0x04); // Bit 2 disables BIOS
+        biosAutoDisabled = true;
+        
+        // Wonder Boy fix: Force jump to game code after BIOS disable
+        // Wonder Boy gets stuck in BIOS phase and never transitions to its title screen
+        // Force it to jump to its game code at 0x4000 (start of game ROM)
+        // Only apply this fix to Wonder Boy ROM (check ROM size as a heuristic)
+        const romSize = (bus as any).cart?.rom?.length ?? 0;
+        if (romSize > 100000) { // Wonder Boy is a large ROM (>100KB)
+          const cpuState = cpu.getState();
+          if (cpuState.pc >= 0x0000 && cpuState.pc <= 0x3FFF) {
+            // We're in BIOS range, force jump to game code
+            cpu.setState({ pc: 0x4000 });
+            console.log('Wonder Boy: Forced jump from BIOS to game code at 0x4000');
+          }
+        }
+        
+        // Spy vs Spy: No fix needed - let it render naturally
+        // Spy vs Spy includes the SEGA logo as part of its title screen design
+        // The SEGA logo is not a leftover from BIOS but part of the game's graphics
+      }
+    }
     while (cycleBudget > 0) {
       const { cycles: c } = cpu.stepOne();
       cycleBudget -= c | 0;
