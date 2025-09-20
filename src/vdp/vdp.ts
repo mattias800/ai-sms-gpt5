@@ -865,6 +865,10 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
       const satXAddr = (spriteAttrBase + 128 + spriteNum * 2) & 0x3fff;
       const spriteX = s.vram[satXAddr] ?? 0;
       const spritePattern = s.vram[satXAddr + 1] ?? 0;
+      
+      // Read sprite flags from basic SAT (4th byte of each sprite entry)
+      const satFlagsAddr = (spriteAttrBase + spriteNum * 4 + 3) & 0x3fff;
+      const spriteFlags = s.vram[satFlagsAddr] ?? 0;
 
       // Adjust Y coordinate (Y+1 is the actual display line)
       // Note: Don't mask with 0xff yet - we need the full value for off-screen checks
@@ -943,9 +947,14 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
           const dbgIgnorePrio = (typeof globalThis !== 'undefined' && (globalThis as any).VDP_DEBUG_IGNORE_BG_PRIORITY === true);
           if (!dbgIgnorePrio && prioMask[screenY * 256 + screenX]) { spritePixelsMaskedByPriority++; perSpriteMaskedPixels[spriteNum]++; continue; }
 
-          // Sprites always use the sprite palette (colors 16-31)
+          // Sprites use palette based on sprite flags bit 3
+          // Bit 3 = 0: Background palette (colors 0-15)
+          // Bit 3 = 1: Sprite palette (colors 16-31)
+          const useSpritePalette = (spriteFlags & 0x08) !== 0;
+          const paletteColorIdx = useSpritePalette ? (16 + colorIdx) : colorIdx;
+          
           const fbIdx = (screenY * 256 + screenX) * 3;
-          const [r, g, b] = paletteToRGB(16 + colorIdx);
+          const [r, g, b] = paletteToRGB(paletteColorIdx);
 
           frameBuffer[fbIdx] = r;
           frameBuffer[fbIdx + 1] = g;
