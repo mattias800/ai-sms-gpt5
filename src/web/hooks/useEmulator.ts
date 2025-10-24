@@ -10,6 +10,8 @@ interface UseEmulatorProps {
   overlayEnabled: boolean;
   onFpsUpdate: (fps: number) => void;
   onStatusUpdate: (status: string) => void;
+  biosData?: Uint8Array | null;
+  biosOnly?: boolean;
 }
 
 interface EmulatorInstance {
@@ -24,6 +26,8 @@ export const useEmulator = ({
   overlayEnabled,
   onFpsUpdate,
   onStatusUpdate,
+  biosData,
+  biosOnly = false,
 }: UseEmulatorProps): EmulatorInstance | null => {
   const machineRef = useRef<IMachine | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -43,53 +47,65 @@ export const useEmulator = ({
     start: false,
   });
 
-  // Initialize machine when ROM is loaded
+  // Initialize machine when ROM is loaded OR when BIOS-only mode is enabled
   useEffect(() => {
-    if (!romData) return;
+    if (!romData && !biosOnly) return;
 
     let cancelled = false;
     (async () => {
       try {
-        const cartridge = { rom: romData };
+        const cartridge = romData ? { rom: romData } : undefined;
 
         // Try to fetch a BIOS over HTTP: prefer mpr-10052.rom, then bios13fx.sms
         const tryUrls = ['mpr-10052.rom', 'bios13fx.sms'];
-        let biosData: Uint8Array | null = null;
-        for (const url of tryUrls) {
-          try {
-            console.log(`[web] Trying BIOS fetch: ${url}`);
-            const res = await fetch(url, { cache: 'no-cache' });
-            if (res.ok) {
-              const ab = await res.arrayBuffer();
-              const bytes = new Uint8Array(ab);
-              if (bytes.length > 0) {
-                biosData = bytes;
-                console.log(`[web] BIOS fetch success: ${url} (${bytes.length} bytes)`);
-                break;
+        let loadedBiosData: Uint8Array | null = biosData ?? null;
+        if (!loadedBiosData) {
+          for (const url of tryUrls) {
+            try {
+              console.log(`[web] Trying BIOS fetch: ${url}`);
+              const res = await fetch(url, { cache: 'no-cache' });
+              if (res.ok) {
+                const ab = await res.arrayBuffer();
+                const bytes = new Uint8Array(ab);
+                if (bytes.length > 0) {
+                  loadedBiosData = bytes;
+                  console.log(`[web] BIOS fetch success: ${url} (${bytes.length} bytes)`);
+                  break;
+                } else {
+                  console.warn(`[web] BIOS fetch empty body: ${url}`);
+                }
               } else {
-                console.warn(`[web] BIOS fetch empty body: ${url}`);
+                console.warn(`[web] BIOS fetch HTTP ${res.status}: ${url}`);
               }
-            } else {
-              console.warn(`[web] BIOS fetch HTTP ${res.status}: ${url}`);
+            } catch (e) {
+              console.warn(`[web] BIOS fetch error: ${url} - ${(e as Error).message}`);
             }
-          } catch (e) {
-            console.warn(`[web] BIOS fetch error: ${url} - ${(e as Error).message}`);
           }
         }
 
-        if (!biosData) {
+        if (!loadedBiosData && !biosOnly) {
           console.info('[web] No BIOS found, falling back to manual init');
-        } else {
-          console.info(`[web] Using BIOS (${biosData.length} bytes)`);
+        } else if (loadedBiosData) {
+          console.info(`[web] Using BIOS (${loadedBiosData.length} bytes)`);
         }
 
-        const machine = biosData
-          ? createMachine({ cart: cartridge, useManualInit: false, bus: { bios: biosData } })
-          : createMachine({ cart: cartridge, useManualInit: true });
-        if (cancelled) return;
-        machineRef.current = machine;
-        console.log(`[web] Boot mode: ${biosData ? 'BIOS' : 'ManualInit'}`);
+        if (loadedBiosData && cartridge) {
+          const machine = createMachine({ cart: cartridge, useManualInit: false, bus: { bios: loadedBiosData } });
+          machineRef.current = machine;
+        } else if (loadedBiosData && !cartridge) {
+          // BIOS-only mode: create machine with null cart and BIOS
+          const machine = createMachine({ cart: { rom: new Uint8Array(0) }, useManualInit: false, bus: { bios: loadedBiosData } });
+          machineRef.current = machine;
+        } else if (cartridge) {
+          const machine = createMachine({ cart: cartridge, useManualInit: true });
+          machineRef.current = machine;
+        } else {
+          throw new Error('[web] Cannot initialize: no ROM and no BIOS');
+        }
 
+        if (cancelled) return;
+        const machine = machineRef.current!;
+        console.log(`[web] Boot mode: ${loadedBiosData ? 'BIOS' : biosOnly ? 'BIOS-only' : 'ManualInit'}`);
 
         // Expose minimal debug helpers for web console
         try {
@@ -171,7 +187,7 @@ export const useEmulator = ({
     })();
 
     return () => { cancelled = true; };
-  }, [romData, onStatusUpdate]);
+  }, [romData, biosOnly, onStatusUpdate, biosData]);
 
   // Handle mute/unmute
   useEffect(() => {
@@ -384,11 +400,11 @@ export const useEmulator = ({
           for (let i = 0; i < samplesPerFrame; i++) {
             machine.runCycles(cyclesPerSample);
             if (wantAudio) {
-              // Convert from internal sample (range ~[-8192,8191], silence=-8192)
-              // to a mixed value centered around 0 by removing the DC offset.
+              // PSG returns signed sample in range [-8192, 8191]
+              // This is already DC-free (0 is silence, not a DC component)
+              // No offset needed - just pass through
               const s = machine.getPSG().getSample();
-              const mixed = (s + 8192) | 0; // remove DC offset -> ~[-?, +32764]
-              if (buffer.length < maxBufferedSamples) buffer.push(mixed);
+              if (buffer.length < maxBufferedSamples) buffer.push(s);
             }
           }
           // Run leftover cycles to complete the frame exactly
@@ -537,5 +553,5 @@ export const useEmulator = ({
     }
   }, [updateController]);
 
-  return romData ? { reset } : null;
+  return romData || biosOnly ? { reset } : null;
 };

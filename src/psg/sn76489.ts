@@ -6,6 +6,12 @@ export interface IPSG {
   reset: () => void;
 }
 
+// Precompute volume table once (logarithmic, 2dB steps). Index 0..15 (0=loudest, 15=silence)
+const VOLUME_TABLE: number[] = [
+  8191, 6507, 5168, 4105, 3261, 2590, 2057, 1634,
+  1298, 1031, 819, 651, 517, 411, 326, 0,
+];
+
 export interface PSGState {
   latchedReg: number;
   tones: [number, number, number]; // 10-bit frequencies
@@ -55,7 +61,7 @@ export const createPSG = (): IPSG => {
 
   const write = (val: number): void => {
     const b = val & 0xff;
-    
+
     // Debug logging (guarded)
     if (PSG_DEBUG) {
       writeCount++;
@@ -87,7 +93,9 @@ export const createPSG = (): IPSG => {
       if (isVolume) {
         // Volume register
         if (PSG_DEBUG) { if (channel >= 0 && channel <= 3) volWriteCounts[channel] = (volWriteCounts[channel] ?? 0) + 1; }
+
         state.vols[channel] = data;
+
         state.latchedReg = (channel << 1) | 1; // Store for completeness (not used by data-only high writes)
         // NOTE: Intentionally do NOT modify latchedToneChannel here.
       } else {
@@ -95,8 +103,10 @@ export const createPSG = (): IPSG => {
         if (channel < 3) {
           // Tone frequency low 4 bits
           if (PSG_DEBUG) { if (channel >= 0 && channel < 3) toneWriteCounts[channel] = (toneWriteCounts[channel] ?? 0) + 1; }
+
           const currentTone = state.tones[channel] ?? 0;
-          state.tones[channel] = (currentTone & 0x3f0) | data;
+          state.tones[channel] = (currentTone & 0x3c0) | data; // Keep bits 9-6, replace bits 3-0 with latch data (bits 3-0)
+
           state.latchedReg = channel << 1; // For visibility
           latchedToneChannel = channel | 0; // Data-only high updates should target this channel
         } else {
@@ -112,13 +122,31 @@ export const createPSG = (): IPSG => {
       // Format: 0-DDDDDD (6 bits of data)
       const data = b & 0x3f;
 
-      // Tests expect that data-only writes update the HIGH 6 bits of the last
-      // latched TONE channel, regardless of any intervening volume latches.
-      // So use latchedToneChannel (0..2) rather than state.latchedReg.
-      const ch = latchedToneChannel & 0x03;
-      if (ch >= 0 && ch < 3) {
-        const currentTone = state.tones[ch] ?? 0;
-        state.tones[ch] = (currentTone & 0x00f) | (data << 4);
+      // Routing mode:
+      // - STRICT = only update when last latched register was a tone low reg; ignore otherwise.
+      // - Lenient (default) = route to last latched tone channel even across volume/noise latches.
+      // Default to lenient to match common game write patterns; enable STRICT via env if desired.
+      const STRICT = (() => {
+        try {
+          if (typeof process !== 'undefined' && !!process.env) {
+            if (process.env.PSG_STRICT_DATA === '1' || process.env.PSG_STRICT_DATA === 'true') return true;
+          }
+        } catch {}
+        return false;
+      })();
+      if (STRICT) {
+        const lr = state.latchedReg & 0x07;
+        if (lr === 0 || lr === 2 || lr === 4) {
+          const ch = (lr >>> 1) & 0x03;
+          const currentTone = state.tones[ch] ?? 0;
+          state.tones[ch] = (currentTone & 0x00f) | ((data & 0x3f) << 4); // Keep bits 3-0, add 6-bit data to bits 9-4
+        }
+      } else {
+        const ch = latchedToneChannel & 0x03;
+        if (ch >= 0 && ch < 3) {
+          const currentTone = state.tones[ch] ?? 0;
+          state.tones[ch] = (currentTone & 0x00f) | ((data & 0x3f) << 4); // Keep bits 3-0, add 6-bit data to bits 9-4
+        }
       }
     }
   };
@@ -136,20 +164,23 @@ export const createPSG = (): IPSG => {
       // Update tone generators
       for (let ch = 0; ch < 3; ch++) {
         const counter = state.counters[ch];
+        // Determine current programmed period (10-bit N)
+        const tone = state.tones[ch] ?? 0;
+        const N = (tone & 0x3ff) | 0;
+
+        // Hardware note: Treat N==0 as N==1. Many games briefly write N=0 while assembling the 10-bit value.
+        // Using DC (hold high) can stall audio; using N=1 keeps behavior closer to hardware frequency math.
+        const effN = (N === 0) ? 1 : N;
+
         if (counter !== undefined && counter <= 0) {
-          // Reload counter
-          const tone = state.tones[ch];
-          if (tone !== undefined) {
-            state.counters[ch] = tone;
-          }
+          // Reload counter with period effN (>0)
+          state.counters[ch] = effN;
           // Toggle output
-          const output = state.outputs[ch];
-          if (output !== undefined) {
-            state.outputs[ch] = !output;
-          }
+          state.outputs[ch] = !state.outputs[ch];
         } else if (counter !== undefined) {
           state.counters[ch] = counter - 1;
         }
+
       }
 
       // Update noise generator
@@ -157,12 +188,13 @@ export const createPSG = (): IPSG => {
         // Reload noise counter based on shift rate
         const shiftRate = state.noise.shift;
         if (shiftRate < 3) {
-          // Fixed frequencies
+          // Fixed frequencies (approximate periods)
           const noiseFreqs = [0x10, 0x20, 0x40];
           state.noiseCounter = noiseFreqs[shiftRate] ?? 0x10;
         } else {
-          // Use tone 2 frequency
-          state.noiseCounter = state.tones[2] ?? 0;
+          // Use tone 2 frequency (N==0 -> 1)
+          const t2 = state.tones[2] ?? 0;
+          state.noiseCounter = Math.max(1, (t2 & 0x3ff) | 0);
         }
 
         // Shift LFSR and generate noise output
@@ -175,6 +207,8 @@ export const createPSG = (): IPSG => {
           const feedback = (state.lfsr & 0x0001) !== 0;
           state.lfsr = (state.lfsr >> 1) | (feedback ? 0x4000 : 0);
         }
+        // Guard against impossible zero-locked LFSR
+        if ((state.lfsr & 0x7fff) === 0) state.lfsr = 0x8000;
         state.noiseOutput = (state.lfsr & 0x0001) !== 0;
       } else {
         state.noiseCounter--;
@@ -183,17 +217,13 @@ export const createPSG = (): IPSG => {
   };
 
   const getSample = (): number => {
-    // Volume table (logarithmic, in 2dB steps)
-    // 0 = full volume (max), 15 = silence
-    const volumeTable = [8191, 6507, 5168, 4105, 3261, 2590, 2057, 1634, 1298, 1031, 819, 651, 517, 411, 326, 0];
-
     let mixed = 0;
     let hasSound = false;
 
     // Mix tone channels as signed square waves around 0
     for (let ch = 0; ch < 3; ch++) {
       const vol = (state.vols[ch] ?? 0xf) & 0x0f;
-      const amp = (volumeTable[vol] ?? 0) | 0;
+      const amp = (VOLUME_TABLE[vol] ?? 0) | 0;
       if (amp > 0) {
         const out = state.outputs[ch] ?? false;
         mixed += out ? amp : -amp;
@@ -203,7 +233,7 @@ export const createPSG = (): IPSG => {
 
     // Mix noise channel as signed
     const noiseVol = (state.vols[3] ?? 0xf) & 0x0f;
-    const noiseAmp = (volumeTable[noiseVol] ?? 0) | 0;
+    const noiseAmp = (VOLUME_TABLE[noiseVol] ?? 0) | 0;
     if (noiseAmp > 0) {
       mixed += state.noiseOutput ? noiseAmp : -noiseAmp;
       hasSound = true;
@@ -214,9 +244,16 @@ export const createPSG = (): IPSG => {
       console.log(`PSG generating sound: mixed=${mixed}`);
     }
 
-    // Apply DC offset so that absolute silence returns -8192 as tests expect.
-    // Then clamp to [-8192, 8191].
-    let sample = (mixed - 8192) | 0;
+    // DC offset disabled by default. Enable only if explicitly requested via env.
+    const USE_DC_OFFSET = (() => {
+      try {
+        return typeof process !== 'undefined' && !!process.env &&
+          (process.env.PSG_DC_OFFSET === '1' || process.env.PSG_DC_OFFSET === 'true');
+      } catch {
+        return false;
+      }
+    })();
+    let sample = (mixed - (USE_DC_OFFSET ? 8192 : 0)) | 0;
     if (sample > 8191) sample = 8191;
     if (sample < -8192) sample = -8192;
     return sample | 0;

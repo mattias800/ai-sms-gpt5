@@ -11,7 +11,7 @@ describe('VDP register 0 mode conflict (M3 vs M4)', (): void => {
 
     const st = vdp.getState!();
     // Expect M3 (bit1) cleared, M4 (bit2) preserved -> value becomes 0x04
-    expect((st.regs[0] & 0xff)).toBe(0x04);
+    expect(((st.regs[0] ?? 0) & 0xff)).toBe(0x04);
   });
 });
 

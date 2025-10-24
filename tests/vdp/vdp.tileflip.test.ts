@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createVDP } from '../../src/vdp/vdp';
+import { createVDP } from '../../src/vdp/vdp.js';
 
 // Helper to set palette color to a distinct RGB value via CRAM index
 const setColor = (vdp: ReturnType<typeof createVDP>, idx: number, r2: number, g2: number, b2: number) => {
@@ -48,7 +48,7 @@ describe('VDP Mode 4 tile flip rendering', () => {
   });
 
   it('renders horizontal and vertical flips correctly', () => {
-    const nameBase = (((vdp.getRegister!(2) >> 1) & 7) << 11) >>> 0;
+    const nameBase = (((( vdp.getRegister!(2) ?? 0) >> 1) & 7) << 11) >>> 0;
     // Make a tile (#1) with a gradient so we can detect flipping
     // Row y has pixels x = y (diagonal) with color = (x+1)
     const tileNum = 1;
@@ -60,7 +60,7 @@ describe('VDP Mode 4 tile flip rendering', () => {
         for (let p = 0; p < 4; p++) {
           const bitVal = (color >> p) & 1;
           const rowByteAddr = tileAddr + y * 4 + p;
-          const prev = vdp.getVRAM!()[rowByteAddr];
+          const prev = (vdp.getVRAM!()[rowByteAddr] ?? 0);
           const next = bitVal ? (prev | (1 << bit)) : (prev & ~(1 << bit));
           writeVRAM(vdp, rowByteAddr, next);
         }
@@ -83,16 +83,16 @@ describe('VDP Mode 4 tile flip rendering', () => {
     const frame = vdp.renderFrame!();
     // Helper to read pixel color index from RGB by inverse palette
     const rgbToIdx = (o: number): number => {
-      const r = frame[o];
-      const g = frame[o + 1];
-      const b = frame[o + 2];
+      const r = frame[o] ?? 0;
+      const g = frame[o + 1] ?? 0;
+      const b = frame[o + 2] ?? 0;
       // Map back to 2-bit components
       const r2 = Math.round(r / 85) & 3;
       const g2 = Math.round(g / 85) & 3;
       const b2 = Math.round(b / 85) & 3;
       // Rebuild CRAM index by scanning 0..15 and matching RGB
       for (let i = 0; i < 16; i++) {
-        const entry = vdp.getCRAM!()[i] & 0x3f;
+        const entry = (vdp.getCRAM!()[i] ?? 0) & 0x3f;
         const rr = (entry & 3) * 85;
         const gg = ((entry >> 2) & 3) * 85;
         const bb = ((entry >> 4) & 3) * 85;

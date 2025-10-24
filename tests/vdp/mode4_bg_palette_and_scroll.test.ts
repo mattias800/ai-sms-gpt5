@@ -47,7 +47,7 @@ const makeLeftEdgePixelTile = (colorIdx: number): number[] => {
 // Read RGB triplet from rendered frame at x,y
 const rgbAt = (rgb: Uint8Array, x: number, y: number): [number, number, number] => {
   const off = (y * 256 + x) * 3;
-  return [rgb[off], rgb[off + 1], rgb[off + 2]];
+  return [(rgb[off] ?? 0), (rgb[off + 1] ?? 0), (rgb[off + 2] ?? 0)];
 };
 
 // Convert 6-bit CRAM value to RGB using emulator mapping

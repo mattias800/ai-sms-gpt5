@@ -1,0 +1,36 @@
+spritePalette[16..31]=0x38 0x20 0x35 0x1b 0x16 0x2a 0x00 0x3f 0x01 0x03 0x3a 0x06 0x0f 0x00 0x00 0x00
+spriteAttrBase=0x3f00, spritePatternBase=0x2000, spriteSize=16, spriteMag=false
+1|spr0: Y=e0 X=a0 P=ac
+2|spr1: Y=e0 X=a2 P=ac
+3|spr2: Y=e0 X=a4 P=ac
+4|spr3: Y=e0 X=86 P=0
+5|spr4: Y=e0 X=a6 P=0
+6|spr5: Y=e0 X=a8 P=0
+7|spr6: Y=e0 X=80 P=0
+8|spr7: Y=e0 X=80 P=10
+9|spr8: Y=e0 X=80 P=10
+10|spr9: Y=e0 X=b0 P=10
+11|spr10: Y=e0 X=80 P=10
+12|spr11: Y=e0 X=80 P=ac
+13|spr12: Y=e0 X=a0 P=ac
+14|spr13: Y=e0 X=a2 P=ac
+15|spr14: Y=e0 X=a4 P=ac
+16|spr15: Y=e0 X=86 P=0
+17|spr16: Y=e0 X=a6 P=0
+18|spr17: Y=e0 X=a8 P=0
+19|spr18: Y=e0 X=80 P=0
+20|spr19: Y=e0 X=80 P=10
+21|spr20: Y=e0 X=80 P=10
+22|spr21: Y=ac X=10 P=a0
+23|spr22: Y=ac X=18 P=a2
+24|spr23: Y=ac X=20 P=a4
+Visible sprite pattern probe:
+  spr21: pn=a0 baseTileAddr=0x3400 nonZero=true bytes=ff ff ff 00 ff f8 f8 00 fd e0 e2 00 fe f2 f1 00 fa f2 f5 00 fa e1 e4 00 e4 db c0 00 c1 bf 81 00
+  spr22: pn=a2 baseTileAddr=0x3440 nonZero=true bytes=ff ff ff 00 ff 7b 7b 00 7b 83 07 00 8b 73 07 00 87 7b 03 00 07 fb 03 00 c7 fd c5 00 ef fd ed 00
+  spr23: pn=a4 baseTileAddr=0x3480 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr24: pn=84 baseTileAddr=0x3080 nonZero=true bytes=00 00 00 00 00 00 00 00 00 00 00 00 3c 3e 3e 00 7e 7f 7f 00 66 7f 7f 00 06 6f 6f 00 06 0f 0f 00
+  spr25: pn=a6 baseTileAddr=0x34c0 nonZero=true bytes=00 01 01 00 01 03 02 00 03 07 07 00 06 0f 0f 00 06 0f 0f 00 0c 1e 1e 00 0c 1e 1e 00 0c 1e 1e 00
+  spr26: pn=a8 baseTileAddr=0x3500 nonZero=true bytes=00 c0 c0 00 c0 e0 20 00 20 f0 d0 00 10 78 68 00 10 78 68 00 08 3c 34 00 08 3c 34 00 08 3c 34 00
+  spr27: pn=80 baseTileAddr=0x3000 nonZero=true bytes=00 00 00 00 00 00 00 00 00 00 00 00 3c 3e 3e 00 7e 7f 7f 00 66 7f 7f 00 66 77 77 00 66 77 77 00
+  spr28: pn=80 baseTileAddr=0x3000 nonZero=true bytes=00 00 00 00 00 00 00 00 00 00 00 00 3c 3e 3e 00 7e 7f 7f 00 66 7f 7f 00 66 77 77 00 66 77 77 00
+drawnPixels=895

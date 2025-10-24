@@ -4,7 +4,7 @@ import { disassembleOne } from '../../src/cpu/z80/disasm.js';
 
 const hex = (n: number): string => n.toString(16).toUpperCase();
 
-const mkReader = (img: Uint8Array) => (addr: number): number => img[addr & 0xffff] & 0xff;
+const mkReader = (img: Uint8Array) => (addr: number): number => (img[addr & 0xffff] ?? 0) & 0xff;
 
 describe('Z80 disassembler coverage (selected opcodes)', (): void => {
   it('disassembles a variety of ED/DD/FD and base opcodes', (): void => {

@@ -15,6 +15,25 @@ describe('SN76489 PSG basics', (): void => {
     expect(s.tones[0]).toBe(tone(0x2a, 0x5));
   });
 
+  it('tone N==0 produces DC-high (no HF toggling/static)', (): void => {
+    const psg = createPSG();
+    // Set channel 0 tone to 0 (low=0, high=0)
+    psg.write(0x80 | 0x00); // latch tone0 low = 0
+    psg.write(0x00);        // data-only high = 0 => N=0
+    // Set channel 0 volume loud (0)
+    psg.write(0x90 | 0x00);
+
+    // Tick a bunch of CPU cycles; outputs[0] should remain TRUE (DC-high)
+    for (let i = 0; i < 200; i++) psg.tickCycles(16); // 16 CPU cycles ~ 1 PSG tick
+    const s = psg.getState();
+    expect(s.tones[0]).toBe(0);
+    expect(s.outputs[0]).toBe(true);
+    // Additionally, running more should not flip it
+    for (let i = 0; i < 200; i++) psg.tickCycles(16);
+    const s2 = psg.getState();
+    expect(s2.outputs[0]).toBe(true);
+  });
+
   it('updates tone1 and tone2 low/high correctly as well', (): void => {
     const psg = createPSG();
     // Tone1 low/high => regs 2 and 3

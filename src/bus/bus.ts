@@ -48,10 +48,6 @@ export class SegaMapper implements IMapper {
       return this.wramRef[a]!;
     }
 
-    // First 1KB is always from bank 0 (unless RAM is mapped)
-    if (a < 0x0400 && !this.ramInSlot0) {
-      return this.banks[0]![a]!;
-    }
     const b0 = this.banks[this.bank0]!;
     const b1 = this.banks[this.bank1]!;
     const b2 = this.banks[this.bank2]!;
@@ -257,10 +253,9 @@ export class SmsBus implements IBus {
       return v;
     }
 
-    // Minimal FM stub ports: read as if no FM chip present
+    // Minimal FM stub ports: no YM2413 present -> return open-bus style 0xFF
+    // Many titles (including Sonic) treat 0xFF as "no FM", and will use PSG for music.
     if (p === 0xf2) {
-      // Indicate "no FM unit present". Many titles probe this; returning 0xFF (open bus style) is a common choice.
-      // This should steer games like Sonic to the PSG path.
       return 0xff;
     }
     if (p === 0xf0 || p === 0xf1) {
@@ -308,13 +303,7 @@ export class SmsBus implements IBus {
     const p = port & 0xff;
     const low6 = p & 0x3f;
     const v = val & 0xff;
-    // PSG on 0x7f (write-only) — must take precedence over VDP mirror on 0x3f low6; also accept 0x7D mirror sometimes used
-    if (p === 0x7f || p === 0x7d) {
-      this.lastPSG = v;
-      if (this.psg) this.psg.write(v);
-      return;
-    }
-    // I/O control and memory control ports
+    // I/O control and memory control ports (handle BEFORE PSG broad mirror)
     if (p === 0x3f) {
       const prev = this.ioControl & 0xff;
       this.ioControl = v;
@@ -361,10 +350,60 @@ export class SmsBus implements IBus {
       } catch {}
       return;
     }
+    // Optional debug: observe PSG candidate writes on odd ports that are NOT canonical 0x7F/0x7D.
+    // Many games emit data-only bytes on odd-mirrored ports (hardware decodes A0=1).
+    // This helps diagnose if we're dropping high 6-bit data by restricting to canonical ports.
+    try {
+      const env = typeof process !== 'undefined' ? (process as any).env : undefined;
+      if (env && env.DEBUG_PSG_PORT && env.DEBUG_PSG_PORT !== '0') {
+        if ((p & 0x01) === 0x01 && p !== 0x7f && p !== 0x7d) {
+          const conflict = (p === 0xbf || p === 0x3f || p === 0xf1);
+          // eslint-disable-next-line no-console
+          console.log(`psg-missed port 0x${p.toString(16).toUpperCase().padStart(2,'0')} val=0x${v.toString(16).toUpperCase().padStart(2,'0')}${conflict ? ' (conflict device)' : ''}`);
+        }
+      }
+    } catch {}
+    // PSG writes: restrict to canonical ports to avoid spurious odd-port traffic corrupting PSG state.
+    // SMS PSG is typically accessed via 0x7F; some software also uses 0x7D.
+    if (p === 0x7f || p === 0x7d) {
+      this.lastPSG = v;
+
+      // Optional debug: log PSG write structure (latch/data, channel, volume/tone, payload)
+      try {
+        const env = typeof process !== 'undefined' ? (process as any).env : undefined;
+        if (env && env.DEBUG_PSG_PORT && env.DEBUG_PSG_PORT !== '0') {
+          const b = v & 0xff;
+          if ((b & 0x80) !== 0) {
+            // Latch + data: 1CCRDDDD
+            const ch = (b >>> 5) & 0x03;
+            const isVol = (b & 0x10) !== 0;
+            const data = b & 0x0f;
+            // eslint-disable-next-line no-console
+            console.log(`psg-port 0x${p.toString(16).toUpperCase().padStart(2,'0')} LATCH ch=${ch} ${isVol ? 'VOL' : 'TONE_LOW'} data=0x${data.toString(16).toUpperCase()}`);
+          } else {
+            // Data-only: 0-DDDDDD
+            const data6 = b & 0x3f;
+            // eslint-disable-next-line no-console
+            console.log(`psg-port 0x${p.toString(16).toUpperCase().padStart(2,'0')} DATA_ONLY hi6=0x${data6.toString(16).toUpperCase()}`);
+          }
+        }
+      } catch {}
+
+      if (this.psg) this.psg.write(v);
+      return;
+    }
+
     // Minimal FM control (0xF2): accept writes to enable/disable flag and ignore silently
     if (p === 0xf2) {
-      // Bit 7 often used as enable; treat non-zero as attempt to enable FM. We still ignore audio path.
+      // Bit 7 often used as enable; track flag for diagnostics (no FM audio implemented)
       this.fmEnabled = (v & 0x80) !== 0;
+      try {
+        const env = typeof process !== 'undefined' ? (process as any).env : undefined;
+        if (env && env.DEBUG_IO_LOG && env.DEBUG_IO_LOG !== '0') {
+          // eslint-disable-next-line no-console
+          console.log(`fm-stub OUT 0xF2 val=0x${v.toString(16).toUpperCase().padStart(2,'0')} fmEnabled=${this.fmEnabled?1:0}`);
+        }
+      } catch {}
       return;
     }
     // Ignore writes to FM data/addr ports (0xF0, 0xF1)

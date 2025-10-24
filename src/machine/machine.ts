@@ -50,12 +50,12 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
   const psg = createPSG();
   const controller1 = createController();
   const controller2 = createController();
-  
+
   // Use manual initialization by default (skip BIOS)
   const useManualInit = cfg.useManualInit ?? true;
-  const bus = new SmsBus(cfg.cart, vdp, psg, controller1, controller2, { 
-    allowCartRam: cfg.bus?.allowCartRam ?? true, 
-    bios: useManualInit ? null : cfg.bus?.bios ?? null 
+  const bus = new SmsBus(cfg.cart, vdp, psg, controller1, controller2, {
+    allowCartRam: cfg.bus?.allowCartRam ?? true,
+    bios: useManualInit ? null : cfg.bus?.bios ?? null
   });
 
   // Optional wait-state hooks
@@ -99,7 +99,8 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
       if (ev.opcode === 0xf3) { diCount++; lastDiPc = ev.pcBefore & 0xffff; }
       // Count RETI/RETN when disasm bytes are present (traceDisasm=true)
       if (ev.opcode === 0xed && Array.isArray(ev.bytes) && ev.bytes.length >= 2) {
-        const sub = ev.bytes[1] & 0xff;
+        const subByte = ev.bytes[1];
+        const sub = (subByte ?? 0) & 0xff;
         if (sub === 0x4d) { // RETI
           retiCount++;
           lastRetiPc = ev.pcBefore & 0xffff;
@@ -123,7 +124,7 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
       if (dynamicCycleHook) dynamicCycleHook(1);
     },
     debugHooks: {
-      ...cfg.cpuDebugHooks,
+      ...(cfg.cpuDebugHooks ?? {}),
       onIFFChange: (iff1: boolean, iff2: boolean, pcBefore: number, reason: string): void => {
         iffChangeCount++;
         lastIffReason = `${reason}:${iff1?1:0}/${iff2?1:0}`;
@@ -143,6 +144,8 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
   // Initialize SMS system manually (replaces BIOS)
   if (useManualInit) {
     initializeSMS({ cpu, vdp, psg, bus });
+    // Enable interrupts after initialization - critical for game execution!
+    enableSMSInterrupts(cpu);
   }
 
   // Maintain a running cycle budget so we don't drift when an instruction overshoots the per-call budget
@@ -150,11 +153,12 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
   let totalCycles = 0;
   let biosAutoDisabled = false;
   let r7FixApplied = false;
-  
+
   const runCycles = (cycles: number): void => {
     cycleBudget += cycles | 0;
     totalCycles += cycles | 0;
-    
+
+
     // BIOS post-processing: Fix VDP Register 7 for proper Wonder Boy background color
     // The BIOS initializes CRAM[2] with light blue but sets R7 to 0x00 (black)
     // We need to set R7 to 0x02 to point to CRAM[2] for the correct background color
@@ -174,17 +178,25 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
 
     // BIOS post-processing: Auto-disable BIOS when game starts executing
     // Some games (like Wonder Boy) don't disable BIOS themselves, causing execution issues
-    // Wait for BIOS phase to complete (~180 frames = ~11M cycles for full BIOS initialization)
-    // But allow BIOS to continue displaying for longer to show the SEGA logo properly
-    // Wonder Boy needs BIOS enabled until it reaches title screen (~600 frames = ~36M cycles)
-    // CRITICAL: Disable BIOS BEFORE it disables the display (frame 659)
-    // Set to 658 frames to prevent BIOS from disabling display
-    if (!useManualInit && !biosAutoDisabled && totalCycles > 39480000) { // After ~39.48M cycles (~658 frames)
+    // Audio Fix: Enable earlier BIOS disable for games that need audio (like Sonic)
+    // Many games initialize audio shortly after BIOS completes (~180 frames = ~3 seconds)
+    // Use environment variable to control timing: SMS_BIOS_DISABLE_FRAMES (default: 180 for audio)
+    const biosDisableFrames = (() => {
+      try {
+        const envFrames = process?.env?.SMS_BIOS_DISABLE_FRAMES;
+        return envFrames ? parseInt(envFrames, 10) : 180; // Default: 180 frames (~3 seconds)
+      } catch {
+        return 180; // Fallback for audio compatibility
+      }
+    })();
+    const biosDisableCycles = biosDisableFrames * 60000; // ~60k cycles per frame
+
+    if (!useManualInit && !biosAutoDisabled && totalCycles > biosDisableCycles) {
       const busState = bus as any;
       if (busState.biosEnabled) {
         bus.writeIO8(0x3E, 0x04); // Bit 2 disables BIOS
         biosAutoDisabled = true;
-        
+
         // Wonder Boy fix: Force jump to game code after BIOS disable
         // Wonder Boy gets stuck in BIOS phase and never transitions to its title screen
         // Force it to jump to its game code at 0x4000 (start of game ROM)
@@ -194,11 +206,12 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
           const cpuState = cpu.getState();
           if (cpuState.pc >= 0x0000 && cpuState.pc <= 0x3FFF) {
             // We're in BIOS range, force jump to game code
-            cpu.setState({ pc: 0x4000 });
+            const newState: typeof cpuState = { ...cpuState, pc: 0x4000 };
+            cpu.setState(newState);
             console.log('Wonder Boy: Forced jump from BIOS to game code at 0x4000');
           }
         }
-        
+
         // Spy vs Spy: No fix needed - let it render naturally
         // Spy vs Spy includes the SEGA logo as part of its title screen design
         // The SEGA logo is not a leftover from BIOS but part of the game's graphics

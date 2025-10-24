@@ -42,12 +42,18 @@
     "trace:last": "ls -1t traces/sms-*.log | head -n 1",
     "mame:run": "node scripts/mame/run-with-timeout.cjs",
     "compare:mame": "npx tsx tools/compare_mame_trace.ts",
-    "trace:compare": "npm run trace:sms && npm run compare:mame",
+    "trace:compare": "npx tsx tools/compare_traces.ts",
     "focus:run": "npx tsx tools/focus_run.ts",
     "rom:im1": "npx tsx tools/roms/make_im1_test.ts",
     "trace:im1": "SMS_ROM=./roms/im1_test.sms TRACE_SECONDS=2 KILL_AFTER_MS=5000 npm run --silent trace:sms",
     "compare:im1": "SMS_ROM=./roms/im1_test.sms ALIGN_PC=0038 MAX_STEPS=50 npm run --silent compare:mame",
-    "wb:logo": "WONDERBOY_SMS_ROM=./wonderboy5.sms SMS_BIOS_ROM=./mpr-12808.ic2 vitest run tests/games/wonderboy_boot_logo.test.ts || true; if [ -f out/wonderboy_120f.png ]; then open out/wonderboy_120f.png; else npx tsx tools/probe_wb_120.ts && open out/wb_120_debug.png; fi"
+    "wb:logo": "WONDERBOY_SMS_ROM=./wonderboy5.sms SMS_BIOS_ROM=./mpr-12808.ic2 vitest run tests/games/wonderboy_boot_logo.test.ts || true; if [ -f out/wonderboy_120f.png ]; then open out/wonderboy_120f.png; else npx tsx tools/probe_wb_120.ts && open out/wb_120_debug.png; fi",
+    "test:z80:zexdoc": "npx tsx tools/run_zexdoc.ts",
+    "test:z80:compare": "npx tsx tools/compare_zexdoc_results.ts",
+    "test:z80:validate": "npm run test:z80:zexdoc && npm run test:z80:compare",
+    "trace:generate-mock-mame": "npx tsx tools/generate_mock_mame_traces.ts",
+    "trace:capture": "npx tsx tools/trace_cpu.ts",
+    "trace:validate:all": "npm run trace:generate-mock-mame && npm run trace:capture -- ./roms/alexkidd.sms --frames 50 --output artifacts/trace_alexkidd.json && npm run trace:compare -- artifacts/trace_alexkidd.json artifacts/mame_traces/alexkidd_mame.json --output artifacts/alexkidd_comparison.md"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",
@@ -66,6 +72,7 @@
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
+    "vite-plugin-checker": "^0.11.0",
     "vitest": "^3.2.4"
   },
   "dependencies": {

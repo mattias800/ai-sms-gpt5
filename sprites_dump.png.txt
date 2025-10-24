@@ -1,0 +1,42 @@
+spritePalette[16..31]=0x00 0x10 0x34 0x38 0x06 0x1b 0x2f 0x3f 0x3d 0x3e 0x01 0x03 0x0b 0x0f 0x00 0x3f
+spriteAttrBase=0x3f00, spritePatternBase=0x2000, spriteSize=16, spriteMag=false
+1|spr0: Y=e0 X=e0 P=0
+2|spr1: Y=e0 X=e0 P=0
+3|spr2: Y=e0 X=e0 P=0
+4|spr3: Y=e0 X=e0 P=0
+5|spr4: Y=e0 X=e0 P=0
+6|spr5: Y=e0 X=e0 P=0
+7|spr6: Y=e0 X=e0 P=0
+8|spr7: Y=e0 X=e0 P=0
+9|spr8: Y=e0 X=e0 P=0
+10|spr9: Y=80 X=e0 P=0
+11|spr10: Y=0 X=e0 P=0
+12|spr11: Y=88 X=e0 P=0
+13|spr12: Y=2 X=e0 P=0
+14|spr13: Y=90 X=e0 P=0
+15|spr14: Y=4 X=e0 P=0
+16|spr15: Y=80 X=e0 P=0
+17|spr16: Y=20 X=e0 P=0
+18|spr17: Y=88 X=e0 P=0
+19|spr18: Y=22 X=e0 P=0
+20|spr19: Y=90 X=e0 P=0
+21|spr20: Y=24 X=e0 P=0
+22|spr21: Y=80 X=e0 P=0
+23|spr22: Y=40 X=e0 P=0
+24|spr23: Y=88 X=e0 P=0
+Visible sprite pattern probe:
+  spr9: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr10: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr11: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr12: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr13: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr14: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr15: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr16: pn=0 baseTileAddr=0x2000 nonZero=false bytes=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+vdp.prioMaskPixels=3122
+vdp.spritePixelsDrawn=0
+vdp.spritePixelsMaskedByPriority=0
+vdp.spriteLinesSkippedByLimit=0
+vdp.perLineLimitHitLines=0
+vdp.activeSprites=64
+drawnPixels=0

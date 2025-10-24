@@ -4,7 +4,7 @@ import { SimpleBus } from '../../src/bus/bus.js';
 
 // Utility to build a small program in RAM
 const loadBytes = (mem: Uint8Array, addr: number, bytes: number[]): void => {
-  for (let i = 0; i < bytes.length; i++) mem[(addr + i) & 0xffff] = bytes[i] & 0xff;
+  for (let i = 0; i < bytes.length; i++) mem[(addr + i) & 0xffff] = (bytes[i] ?? 0) & 0xff;
 };
 
 describe('Z80 IRQ acceptance around EI/HALT and IFF restore', () => {

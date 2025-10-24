@@ -47,8 +47,8 @@ describe('Z80 IM1 simple ISR preserves BC', (): void => {
     // Inspect stack bytes for pushed PC (should be 00 06 at [SP+1],[SP])
     const stPush = cpu.getState();
     const sp = stPush.sp & 0xffff;
-    const lo = mem[sp & 0xffff] & 0xff;
-    const hi = mem[(sp + 1) & 0xffff] & 0xff;
+    const lo = (mem[sp & 0xffff] ?? 0) & 0xff;
+    const hi = (mem[(sp + 1) & 0xffff] ?? 0) & 0xff;
     expect(lo).toBe(0x06);
     expect(hi).toBe(0x00);
     // Run ISR fully (9 ops including RETI)

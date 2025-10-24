@@ -76,7 +76,7 @@ describe('VDP IRQ/status branch coverage', (): void => {
     setAddr(vdp, 0x0003, 3);
     writeData(vdp, 0x3f); // write white (max components)
     const st = vdp.getState!();
-    expect(st.cram[3] & 0x3f).toBe(0x3f);
+    expect((st.cram[3] ?? 0) & 0x3f).toBe(0x3f);
   });
 });
 

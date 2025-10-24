@@ -7,6 +7,7 @@
  */
 
 import { IZ80 } from '../cpu/z80/z80.js';
+import type { Z80State } from '../cpu/z80/state.js';
 import { IVDP } from '../vdp/vdp.js';
 import { IPSG } from '../psg/sn76489.js';
 import { IBus } from '../bus/bus.js';
@@ -29,20 +30,35 @@ export const initializeSMS = (config: SMSInitConfig): void => {
 
   // 1. CPU Initialization
   // Set up CPU state similar to BIOS startup
-  cpu.setState({
+  const newState: Z80State = {
     pc: 0x0000,        // Start at cartridge
     sp: 0xDFF0,        // Stack pointer (SMS standard)
-    af: 0x0000,        // AF = 0x0000
-    bc: 0x0000,        // BC = 0x0000  
-    de: 0x0000,        // DE = 0x0000
-    hl: 0x0000,        // HL = 0x0000
+    a: 0x0000,         // A = 0x00
+    f: 0x0000,         // F = 0x00
+    b: 0x0000,         // B = 0x00
+    c: 0x0000,         // C = 0x00
+    d: 0x0000,         // D = 0x00
+    e: 0x0000,         // E = 0x00
+    h: 0x0000,         // H = 0x00
+    l: 0x0000,         // L = 0x00
+    a_: 0,             // A' = 0x00
+    f_: 0,             // F' = 0x00
+    b_: 0,             // B' = 0x00
+    c_: 0,             // C' = 0x00
+    d_: 0,             // D' = 0x00
+    e_: 0,             // E' = 0x00
+    h_: 0,             // H' = 0x00
+    l_: 0,             // L' = 0x00
     ix: 0x0000,        // IX = 0x0000
     iy: 0x0000,        // IY = 0x0000
+    i: 0,              // I = 0x00
+    r: 0,              // R = 0x00
     iff1: false,       // Interrupts disabled initially
     iff2: false,       // Interrupts disabled initially
     im: 1,             // Interrupt mode 1 (SMS standard)
     halted: false,     // CPU running
-  });
+  };
+  cpu.setState(newState);
 
   // 2. VDP Initialization
   // Set up VDP registers to SMS defaults
@@ -196,11 +212,12 @@ export const enableSMSInterrupts = (cpu: IZ80): void => {
   console.log('Enabling SMS interrupts...');
   
   const state = cpu.getState();
-  cpu.setState({
+  const newState: Z80State = {
     ...state,
     iff1: true,  // Enable interrupts
     iff2: true,  // Enable interrupts
-  });
+  };
+  cpu.setState(newState);
   
   console.log('SMS interrupts enabled');
 };

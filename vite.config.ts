@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import checker from 'vite-plugin-checker';
 import path from 'path';
 import { copyFileSync, existsSync } from 'fs';
 
 export default defineConfig({
   plugins: [
     react(),
+    // TypeScript type checking on dev server
+    checker({
+      typescript: {
+        tsconfigPath: './tsconfig.json',
+      },
+    }),
     // Plugin to copy BIOS files to dist-web during build
     {
       name: 'copy-bios-files',

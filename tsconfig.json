@@ -17,6 +17,6 @@
     "sourceMap": true,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "tests", "scripts", "tools"],
-  "exclude": ["node_modules", "dist", "dist-web", "src/web/**/*"]
+  "include": ["src", "tests"],
+  "exclude": ["node_modules", "dist", "dist-web", "src/web/**/*", "scripts", "tools"]
 }

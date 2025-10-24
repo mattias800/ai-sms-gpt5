@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createVDP } from '../../src/vdp/vdp';
+import { createVDP } from '../../src/vdp/vdp.js';
 
 const writeVRAM = (vdp: ReturnType<typeof createVDP>, addr: number, val: number) => {
   const port = 0xbe;
@@ -57,7 +57,7 @@ describe('VDP name table wraparound with scrolling', () => {
     setCram(4, 0x3f);
 
     // Fill name table with tile numbers increasing by 1 across rows (0..3 wrap)
-    const nameBase = (((vdp.getRegister!(2) >> 1) & 7) << 11) >>> 0;
+    const nameBase = (((( vdp.getRegister!(2) ?? 0) >> 1) & 7) << 11) >>> 0;
     for (let ty = 0; ty < 32; ty++) {
       for (let tx = 0; tx < 32; tx++) {
         const idx = ((ty & 31) * 32 + (tx & 31)) * 2;
@@ -78,7 +78,7 @@ describe('VDP name table wraparound with scrolling', () => {
     // Sample near edges to ensure wrapping occurred
     const sampleIdx = (x: number, y: number) => {
       const o = (y * 256 + x) * 3;
-      return (frame[o] << 16) | (frame[o + 1] << 8) | frame[o + 2];
+      return ((frame[o] ?? 0) << 16) | ((frame[o + 1] ?? 0) << 8) | (frame[o + 2] ?? 0);
     };
 
     // Opposite edges should show same checker parity when wrapped correctly

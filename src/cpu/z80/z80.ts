@@ -338,11 +338,15 @@ const readIO8 = (port: number): number => {
     write8(s.sp, v & 0xff);
     // Track depth inside IRQ/NMI frames
     if (inIRQ()) {
-      const top = irqSpDepthStack.length ? irqSpDepthStack.length - 1 : -1;
-      if (top >= 0) irqSpDepthStack[top] = (irqSpDepthStack[top] + 1) | 0;
+      if (irqSpDepthStack.length > 0) {
+        const idx = irqSpDepthStack.length - 1;
+        irqSpDepthStack[idx] = ((irqSpDepthStack[idx] ?? 0) + 1) | 0;
+      }
     } else if (inNMI()) {
-      const top = nmiSpDepthStack.length ? nmiSpDepthStack.length - 1 : -1;
-      if (top >= 0) nmiSpDepthStack[top] = (nmiSpDepthStack[top] + 1) | 0;
+      if (nmiSpDepthStack.length > 0) {
+        const idx = nmiSpDepthStack.length - 1;
+        nmiSpDepthStack[idx] = ((nmiSpDepthStack[idx] ?? 0) + 1) | 0;
+      }
     }
     if (opts.debugHooks?.onPush16) opts.debugHooks.onPush16(spBefore, v & 0xffff, s.pc & 0xffff);
   };
@@ -356,11 +360,15 @@ const readIO8 = (port: number): number => {
     const val = ((hi << 8) | lo) & 0xffff;
     // Track depth inside IRQ/NMI frames
     if (inIRQ()) {
-      const top = irqSpDepthStack.length ? irqSpDepthStack.length - 1 : -1;
-      if (top >= 0) irqSpDepthStack[top] = Math.max(0, (irqSpDepthStack[top] - 1) | 0);
+      if (irqSpDepthStack.length > 0) {
+        const idx = irqSpDepthStack.length - 1;
+        irqSpDepthStack[idx] = Math.max(0, ((irqSpDepthStack[idx] ?? 0) - 1) | 0);
+      }
     } else if (inNMI()) {
-      const top = nmiSpDepthStack.length ? nmiSpDepthStack.length - 1 : -1;
-      if (top >= 0) nmiSpDepthStack[top] = Math.max(0, (nmiSpDepthStack[top] - 1) | 0);
+      if (nmiSpDepthStack.length > 0) {
+        const idx = nmiSpDepthStack.length - 1;
+        nmiSpDepthStack[idx] = Math.max(0, ((nmiSpDepthStack[idx] ?? 0) - 1) | 0);
+      }
     }
     if (opts.debugHooks?.onPop16) opts.debugHooks.onPop16(spBefore, val, s.pc & 0xffff);
     return val;
@@ -480,18 +488,9 @@ const readIO8 = (port: number): number => {
       return res;
     };
 
-    // Commit EI pending enable before decoding the next instruction, but mask IRQ for exactly one instruction
-    if (iff1Pending) {
-      s.iff1 = true;
-      s.iff2 = true;
-      iff1Pending = false;
-      eiMaskOne = true;
-      emitIFF('EI-commit');
-    }
+    // EI delay: block interrupt acceptance for exactly one instruction after EI
     let blockIRQThisStep = eiMaskOne;
-    // If we are halted, do not block the next IRQ by EI mask-one — real Z80 wakes from HALT on IRQ immediately after EI.
-    if (s.halted) blockIRQThisStep = false;
-    // Clear the mask so it only blocks this single step
+    // Clear the mask so it only blocks this single step (both halted and non-halted)
     eiMaskOne = false;
 
     // If CPU is halted, interrupts (NMI first) can be accepted immediately on this step
@@ -511,8 +510,8 @@ const readIO8 = (port: number): number => {
         s.pc = 0x0066;
         return mkRes(11, false, true);
       }
-      // While halted, allow maskable IRQ acceptance whenever IFF1 is set, regardless of EI mask-one gating.
-      if (pendingIRQ && s.iff1) {
+      // While halted, allow maskable IRQ acceptance whenever IFF1 is set and EI delay is not active
+      if (pendingIRQ && s.iff1 && !blockIRQThisStep) {
         pendingIRQ = false;
         irqReturnStack.push(s.pc & 0xffff);
         // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
@@ -612,8 +611,8 @@ const readIO8 = (port: number): number => {
       return mkRes(11, false, true);
     }
 
-    // Handle maskable IRQ when enabled and not in EI delay; defer if next op is HALT (HALT executes first, IRQ on next step)
-      if (pendingIRQ && s.iff1 && !iff1Pending && !blockIRQThisStep && (nextOp !== 0x76 || irqJustRequested)) {
+    // Handle maskable IRQ when enabled and not in EI delay; defer if next op is HALT
+    if (pendingIRQ && s.iff1 && !blockIRQThisStep && nextOp !== 0x76) {
       pendingIRQ = false;
       irqReturnStack.push(s.pc & 0xffff);
       // On maskable IRQ acceptance, IFF1 is reset; IFF2 remains unchanged (used for NMI restore)
@@ -660,7 +659,7 @@ const readIO8 = (port: number): number => {
       // Pending IRQ but acceptance gated – record reason for diagnostics
       let reason = '';
       if (!s.iff1) reason = 'iff1=0';
-      else if (iff1Pending || blockIRQThisStep) reason = 'ei-mask1';
+      else if (blockIRQThisStep) reason = 'ei-mask1';
       else if (nextOp === 0x76 && !irqJustRequested) reason = 'halt-gate';
       else reason = 'other-gate';
       if (opts.debugHooks?.onIrqGate) opts.debugHooks.onIrqGate(s.pc & 0xffff, reason);
@@ -751,9 +750,9 @@ const readIO8 = (port: number): number => {
     if (op === 0xc9) {
       const retAddr = pop16() & 0xffff;
       // Only restore IFF1 when unwinding the original IRQ/NMI frame.
-      const irqTopPc = irqReturnStack.length ? irqReturnStack[irqReturnStack.length - 1] : null;
-      const irqTopSp = irqBaseSpStack.length ? irqBaseSpStack[irqBaseSpStack.length - 1] : null;
-      const irqDepth = irqSpDepthStack.length ? irqSpDepthStack[irqSpDepthStack.length - 1] : 0;
+      const irqTopPc = irqReturnStack.length > 0 ? (irqReturnStack[irqReturnStack.length - 1] ?? 0) : null;
+      const irqTopSp = irqBaseSpStack.length > 0 ? (irqBaseSpStack[irqBaseSpStack.length - 1] ?? 0) : null;
+      const irqDepth = irqSpDepthStack.length > 0 ? (irqSpDepthStack[irqSpDepthStack.length - 1] ?? 0) : 0;
       if (irqTopPc !== null && (retAddr === (irqTopPc & 0xffff) || (irqTopSp !== null && s.sp === (irqTopSp & 0xffff)) || irqDepth === 0)) {
         irqReturnStack.pop();
         irqBaseSpStack.pop();
@@ -761,9 +760,9 @@ const readIO8 = (port: number): number => {
         s.iff1 = s.iff2;
         emitIFF('RET-final-IRQ');
       }
-      const nmiTopPc = nmiReturnStack.length ? nmiReturnStack[nmiReturnStack.length - 1] : null;
-      const nmiTopSp = nmiBaseSpStack.length ? nmiBaseSpStack[nmiBaseSpStack.length - 1] : null;
-      const nmiDepth = nmiSpDepthStack.length ? nmiSpDepthStack[nmiSpDepthStack.length - 1] : 0;
+      const nmiTopPc = nmiReturnStack.length > 0 ? (nmiReturnStack[nmiReturnStack.length - 1] ?? 0) : null;
+      const nmiTopSp = nmiBaseSpStack.length > 0 ? (nmiBaseSpStack[nmiBaseSpStack.length - 1] ?? 0) : null;
+      const nmiDepth = nmiSpDepthStack.length > 0 ? (nmiSpDepthStack[nmiSpDepthStack.length - 1] ?? 0) : 0;
       if (nmiTopPc !== null && (retAddr === (nmiTopPc & 0xffff) || (nmiTopSp !== null && s.sp === (nmiTopSp & 0xffff)) || nmiDepth === 0)) {
         nmiReturnStack.pop();
         nmiBaseSpStack.pop();
@@ -780,9 +779,9 @@ const readIO8 = (port: number): number => {
       const cc = (op >>> 3) & 7;
       if (cond(cc)) {
         const retAddr = pop16() & 0xffff;
-        const irqTopPc = irqReturnStack.length ? irqReturnStack[irqReturnStack.length - 1] : null;
-        const irqTopSp = irqBaseSpStack.length ? irqBaseSpStack[irqBaseSpStack.length - 1] : null;
-        const irqDepth = irqSpDepthStack.length ? irqSpDepthStack[irqSpDepthStack.length - 1] : 0;
+        const irqTopPc = irqReturnStack.length > 0 ? (irqReturnStack[irqReturnStack.length - 1] ?? 0) : null;
+        const irqTopSp = irqBaseSpStack.length > 0 ? (irqBaseSpStack[irqBaseSpStack.length - 1] ?? 0) : null;
+        const irqDepth = irqSpDepthStack.length > 0 ? (irqSpDepthStack[irqSpDepthStack.length - 1] ?? 0) : 0;
         if (irqTopPc !== null && (retAddr === (irqTopPc & 0xffff) || (irqTopSp !== null && s.sp === (irqTopSp & 0xffff)) || irqDepth === 0)) {
           irqReturnStack.pop();
           irqBaseSpStack.pop();
@@ -790,9 +789,9 @@ const readIO8 = (port: number): number => {
           s.iff1 = s.iff2;
           emitIFF('RETcc-final-IRQ');
         }
-        const nmiTopPc = nmiReturnStack.length ? nmiReturnStack[nmiReturnStack.length - 1] : null;
-        const nmiTopSp = nmiBaseSpStack.length ? nmiBaseSpStack[nmiBaseSpStack.length - 1] : null;
-        const nmiDepth = nmiSpDepthStack.length ? nmiSpDepthStack[nmiSpDepthStack.length - 1] : 0;
+        const nmiTopPc = nmiReturnStack.length > 0 ? (nmiReturnStack[nmiReturnStack.length - 1] ?? 0) : null;
+        const nmiTopSp = nmiBaseSpStack.length > 0 ? (nmiBaseSpStack[nmiBaseSpStack.length - 1] ?? 0) : null;
+        const nmiDepth = nmiSpDepthStack.length > 0 ? (nmiSpDepthStack[nmiSpDepthStack.length - 1] ?? 0) : 0;
         if (nmiTopPc !== null && (retAddr === (nmiTopPc & 0xffff) || (nmiTopSp !== null && s.sp === (nmiTopSp & 0xffff)) || nmiDepth === 0)) {
           nmiReturnStack.pop();
           nmiBaseSpStack.pop();
@@ -1333,12 +1332,12 @@ const readIO8 = (port: number): number => {
         s.f = f;
         return mkRes(18, false, false);
       }
-      // Unimplemented ED opcode
-      throw new Error(
-        `Unimplemented ED opcode 0x${sub.toString(16).padStart(2, '0')} at PC=0x${(s.pc - 2)
-          .toString(16)
-          .padStart(4, '0')}`
-      );
+      // Undocumented ED opcodes
+      // Per Z80 hardware specification (Frank Cringle, ZEXDOC):
+      // - Undefined ED subcodes execute as 8 T-state no-ops
+      // - No flags modified, no memory/register side effects
+      // - R register already incremented twice (ED prefix fetch + subcode fetch)
+      return mkRes(8, false, false);
     }
 
     // DD/FD prefix (IX/IY)
@@ -1805,13 +1804,13 @@ const readIO8 = (port: number): number => {
     // HALT
     if (op === 0x76) {
       s.halted = true;
-      // EI pending commit after this instruction if set
-      if (iff1Pending) {
-        s.iff1 = true;
-        s.iff2 = true;
-        iff1Pending = false;
-        emitIFF('EI-commit-after-HALT');
-      }
+      // PC was incremented by fetchOpcode - this is correct. HALT executes and PC advances.
+      // When idle in HALT, PC sits at the next instruction address (ready to resume).
+      // When an interrupt happens, the return address is the current idle PC (after HALT).
+      // EI delay does NOT commit during HALT execution. EI delay only masks interrupts
+      // during regular instruction execution. When HALT executes immediately after EI,
+      // EI delay is still active to mask maskable IRQs during HALT, but NMI is always accepted.
+      // Return without committing iff1Pending.
       return mkRes(4, false, false);
     }
 
@@ -2425,29 +2424,26 @@ const readIO8 = (port: number): number => {
       const imm = fetch8();
       const { f } = sub8(s.a, imm, 0);
       s.f = f;
-      // Commit EI pending if any
-      if (iff1Pending) {
-        s.iff1 = true;
-        s.iff2 = true;
-        iff1Pending = false;
-      }
       return mkRes(7, false, false);
     }
 
     // DI (11110011)
     if (op === 0xf3) {
-      // Z80 spec: DI resets IFF1 only; IFF2 is unaffected (used for NMI restore)
+      // Z80 spec: DI resets both IFF1 and IFF2
       s.iff1 = false;
+      s.iff2 = false;
       emitIFF('DI');
-      // Preserve IFF2 as-is
-      iff1Pending = false;
       return mkRes(4, false, false);
     }
 
     // EI (11111011)
     if (op === 0xfb) {
-      // interrupts become enabled after next instruction
-      iff1Pending = true;
+      // Set IFF1 immediately per Z80 spec
+      s.iff1 = true;
+      s.iff2 = true;
+      emitIFF('EI');
+      // Mask interrupt acceptance for exactly one instruction (EI delay)
+      eiMaskOne = true;
       return mkRes(4, false, false);
     }
 

@@ -16,6 +16,7 @@ export const App: React.FC = () => {
   const [overlayEnabled, setOverlayEnabled] = useState(false);
   const [ignorePriorityEnabled, setIgnorePriorityEnabled] = useState(false);
   const [ignoreSpriteLimitEnabled, setIgnoreSpriteLimitEnabled] = useState(false);
+  const [biosOnly, setBiosOnly] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -27,6 +28,7 @@ export const App: React.FC = () => {
     overlayEnabled,
     onFpsUpdate: setFps,
     onStatusUpdate: setStatus,
+    biosOnly,
   });
 
   const handleRomLoad = useCallback((data: Uint8Array, name: string) => {
@@ -76,6 +78,10 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const handleToggleBiosOnly = useCallback(() => {
+    setBiosOnly(prev => !prev);
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -93,13 +99,15 @@ export const App: React.FC = () => {
             onMute={handleMute}
             isPaused={isPaused}
             isMuted={isMuted}
-            isRomLoaded={!!romData}
+            isRomLoaded={!!romData || biosOnly}
             onToggleOverlay={handleToggleOverlay}
             overlayEnabled={overlayEnabled}
             onToggleIgnorePriority={handleToggleIgnorePriority}
             ignorePriorityEnabled={ignorePriorityEnabled}
             onToggleIgnoreSpriteLimit={handleToggleIgnoreSpriteLimit}
             ignoreSpriteLimitEnabled={ignoreSpriteLimitEnabled}
+            onToggleBiosOnly={handleToggleBiosOnly}
+            biosOnlyEnabled={biosOnly}
           />
 
           <div className="status-bar">{status}</div>

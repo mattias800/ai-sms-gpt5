@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createVDP } from '../../src/vdp/vdp';
+import { createVDP } from '../../src/vdp/vdp.js';
 
 const writeVRAM = (vdp: ReturnType<typeof createVDP>, addr: number, val: number) => {
   const port = 0xbe;
@@ -54,7 +54,7 @@ describe('BG priority masks sprite pixels', () => {
     // Build tiles
     writeSolidTile(vdp, 1, 1); // solid color 1
 
-    const nameBase = (((vdp.getRegister!(2) >> 1) & 7) << 11) >>> 0;
+    const nameBase = (((( vdp.getRegister!(2) ?? 0) >> 1) & 7) << 11) >>> 0;
     // Place tile with priority bit set at top-left
     const idx = 0;
     writeVRAM(vdp, nameBase + idx, 1); // tile #1
@@ -62,7 +62,7 @@ describe('BG priority masks sprite pixels', () => {
 
     // Sprite: place an 8x8 sprite at (0,0) with color 1 pattern
     // Fill sprite pattern 0 with solid color 1
-    const spritePatBase = (vdp.getRegister!(6) & 0x04) ? 0x2000 : 0x0000;
+    const spritePatBase = ((vdp.getRegister!(6) ?? 0) & 0x04) ? 0x2000 : 0x0000;
     for (let y = 0; y < 8; y++) {
       for (let p = 0; p < 4; p++) {
         const bitVal = (1 >> p) & 1;
@@ -70,7 +70,7 @@ describe('BG priority masks sprite pixels', () => {
       }
     }
     // SAT base from R5
-    const satBase = ((vdp.getRegister!(5) & 0x7e) << 7) >>> 0;
+    const satBase = (((vdp.getRegister!(5) ?? 0) & 0x7e) << 7) >>> 0;
     // Sprite 0 at Y=0 (displayed at 1), X=0, pattern 0
     writeVRAM(vdp, satBase + 0, 0x00);
     writeVRAM(vdp, satBase + 128 + 0 * 2, 0x00);
@@ -81,9 +81,9 @@ describe('BG priority masks sprite pixels', () => {
     const frame = vdp.renderFrame!();
     // Pixel at (0,0): BG has priority and color 1 (red); sprite would be green if drawn
     const o = (0 * 256 + 0) * 3;
-    const r = frame[o];
-    const g = frame[o + 1];
-    const b = frame[o + 2];
+    const r = frame[o] ?? 0;
+    const g = frame[o + 1] ?? 0;
+    const b = frame[o + 2] ?? 0;
     // Expect red (BG) not green (sprite)
     expect(r).toBeGreaterThan(g);
   });

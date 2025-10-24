@@ -4,15 +4,23 @@ import { createZ80 } from '../../src/cpu/z80/z80.js';
 import { FLAG_C, FLAG_Z } from '../../src/cpu/z80/flags.js';
 
 describe('Z80 ED coverage boosts', (): void => {
-  it('unimplemented ED opcode throws', (): void => {
+  it('undocumented ED opcodes execute as 8 T-state no-ops per Z80 spec', (): void => {
     const bus = new SimpleBus();
     const mem = bus.getMemory();
-    // ED 6E is not implemented in this core
-    mem.set([0xed, 0x6e], 0x0000);
+    // ED 6E is undefined in the Z80 instruction set; should execute as NOP
+    mem.set([0xed, 0x6e, 0x76], 0x0000);
     const cpu = createZ80({ bus });
-    expect((): void => {
-      cpu.stepOne();
-    }).toThrowError(/Unimplemented ED opcode/);
+    const st0 = cpu.getState();
+    const f0 = st0.f; // capture initial flags
+    const a0 = st0.a; // capture initial A
+    cpu.stepOne();
+    const st = cpu.getState();
+    // Should take 8 T-states (M1 4 for ED + 4 for 6E, but mkRes reports 8 total for the opcode)
+    // Flags and A should be unchanged
+    expect(st.f).toBe(f0);
+    expect(st.a).toBe(a0);
+    // PC should advance by 2 (ED + subcode)
+    expect(st.pc).toBe((st0.pc + 2) & 0xffff);
   });
 
   it('LD A,I with iff2=false sets PV=0 and Z from I', (): void => {

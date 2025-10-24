@@ -49,6 +49,7 @@ export interface VdpPublicState {
   vblankCount?: number;
   statusReadCount?: number;
   irqAssertCount?: number;
+  vblankStartLine?: number; // Line number when VBlank starts (internal timing)
 }
 
 export interface IVDP {
@@ -573,7 +574,7 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
       line: s.line | 0,
       cyclesPerLine: s.cyclesPerLine | 0,
       linesPerFrame: s.linesPerFrame | 0,
-      vblankStartLine: s.vblankStartLine | 0,
+      vblankStartLine: (s.vblankStartLine ?? 192) | 0,
       vblankIrqEnabled,
       displayEnabled,
       nameTableBase,
@@ -839,14 +840,18 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
         for (let sy = 0; sy < aH; sy++) {
           const line = displayY + sy;
           if (line < 0 || line >= 192) continue;
-          if ((perLineCount[line] | 0) < 8) {
+          const count = perLineCount[line] ?? 0;
+          if ((count | 0) < 8) {
             allowed[(line * 64 + i) | 0] = 1;
-            perLineCount[line] = (perLineCount[line] + 1) as unknown as number as any;
+            perLineCount[line] = (count + 1) as unknown as any;
           }
         }
       }
       // Count lines where 8-sprite limit was hit
-      for (let ln = 0; ln < 192; ln++) if ((perLineCount[ln] | 0) >= 8) perLineLimitHitLines++;
+      for (let ln = 0; ln < 192; ln++) {
+        const count = perLineCount[ln] ?? 0;
+        if ((count | 0) >= 8) perLineLimitHitLines++;
+      }
     }
 
     // Process sprites in reverse order (sprite 0 has highest priority)
@@ -862,13 +867,15 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
       if (spriteY >= 0xe0) { perSpriteOffscreen[spriteNum] = 1; continue; }
 
       // Read sprite X and pattern from extended SAT (starts at SAT + 128)
+      // SMS SAT structure (spriteAttrBase = R5[6:1]<<7, typically 0x3F00):
+      // - 0x00-0x3F: Y coordinates (64 bytes, 1 byte per sprite)
+      // - 0x80-0xFF: X coordinates and pattern/tile numbers (128 bytes, 2 bytes per sprite)
+      //   Byte 0x80+i*2: X coordinate for sprite i
+      //   Byte 0x80+i*2+1: Pattern/tile number for sprite i
       const satXAddr = (spriteAttrBase + 128 + spriteNum * 2) & 0x3fff;
+      const satPatternAddr = (spriteAttrBase + 128 + spriteNum * 2 + 1) & 0x3fff;
       const spriteX = s.vram[satXAddr] ?? 0;
-      const spritePattern = s.vram[satXAddr + 1] ?? 0;
-      
-      // Read sprite flags from basic SAT (4th byte of each sprite entry)
-      const satFlagsAddr = (spriteAttrBase + spriteNum * 4 + 3) & 0x3fff;
-      const spriteFlags = s.vram[satFlagsAddr] ?? 0;
+      const spritePattern = s.vram[satPatternAddr] ?? 0;
 
       // Adjust Y coordinate (Y+1 is the actual display line)
       // Note: Don't mask with 0xff yet - we need the full value for off-screen checks
@@ -895,7 +902,8 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
 
         // If this sprite is not allowed on this scanline (due to 8-sprite limit), skip this line for this sprite
         const dbgIgnoreLimit2 = (typeof globalThis !== 'undefined' && (globalThis as any).VDP_DEBUG_IGNORE_SPRITE_LIMIT === true);
-        if (!dbgIgnoreLimit2 && allowed[(screenY * 64 + spriteNum) | 0] === 0) { spriteLinesSkippedByLimit++; perSpriteCappedLines[spriteNum]++; continue; }
+        const allowedVal = allowed[(screenY * 64 + spriteNum) | 0] ?? 0;
+        if (!dbgIgnoreLimit2 && allowedVal === 0) { spriteLinesSkippedByLimit++; perSpriteCappedLines[spriteNum] = (perSpriteCappedLines[spriteNum] ?? 0) + 1; continue; }
         // We no longer need to count here, it was done in the pre-pass
         let drewAnyPixelThisLine = false;
 
@@ -945,13 +953,10 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
 
           // If BG priority mask is set here, skip drawing sprite pixel (BG in front)
           const dbgIgnorePrio = (typeof globalThis !== 'undefined' && (globalThis as any).VDP_DEBUG_IGNORE_BG_PRIORITY === true);
-          if (!dbgIgnorePrio && prioMask[screenY * 256 + screenX]) { spritePixelsMaskedByPriority++; perSpriteMaskedPixels[spriteNum]++; continue; }
+          if (!dbgIgnorePrio && prioMask[screenY * 256 + screenX]) { spritePixelsMaskedByPriority++; perSpriteMaskedPixels[spriteNum] = (perSpriteMaskedPixels[spriteNum] ?? 0) + 1; continue; }
 
-          // Sprites use palette based on sprite flags bit 3
-          // Bit 3 = 0: Background palette (colors 0-15)
-          // Bit 3 = 1: Sprite palette (colors 16-31)
-          const useSpritePalette = (spriteFlags & 0x08) !== 0;
-          const paletteColorIdx = useSpritePalette ? (16 + colorIdx) : colorIdx;
+          // SMS sprites always use the sprite palette (16-31); no selectable palette like Genesis
+          const paletteColorIdx = 16 + colorIdx;
           
           const fbIdx = (screenY * 256 + screenX) * 3;
           const [r, g, b] = paletteToRGB(paletteColorIdx);
@@ -960,7 +965,7 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
           frameBuffer[fbIdx + 1] = g;
           frameBuffer[fbIdx + 2] = b;
           spritePixelsDrawn++;
-          perSpriteDrawnPixels[spriteNum]++;
+          perSpriteDrawnPixels[spriteNum] = (perSpriteDrawnPixels[spriteNum] ?? 0) + 1;
           // Continue drawing remaining pixels; limit enforced per-scanline per-sprite
         }
       }
@@ -979,15 +984,15 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
     for (let i = 0; i < activeSprites; i++) {
       const entry: VdpSpriteDebugEntry = {
         index: i,
-        x: perSpriteX[i] | 0,
-        y: perSpriteY[i] | 0,
-        width: perSpriteW[i] | 0,
-        height: perSpriteH[i] | 0,
-        drawnPixels: perSpriteDrawnPixels[i] | 0,
-        maskedPixels: perSpriteMaskedPixels[i] | 0,
-        cappedLines: perSpriteCappedLines[i] | 0,
-        terminated: perSpriteTerminated[i] !== 0,
-        offscreen: perSpriteOffscreen[i] !== 0,
+        x: (perSpriteX[i] ?? 0) | 0,
+        y: (perSpriteY[i] ?? 0) | 0,
+        width: (perSpriteW[i] ?? 0) | 0,
+        height: (perSpriteH[i] ?? 0) | 0,
+        drawnPixels: (perSpriteDrawnPixels[i] ?? 0) | 0,
+        maskedPixels: (perSpriteMaskedPixels[i] ?? 0) | 0,
+        cappedLines: (perSpriteCappedLines[i] ?? 0) | 0,
+        terminated: (perSpriteTerminated[i] ?? 0) !== 0,
+        offscreen: (perSpriteOffscreen[i] ?? 0) !== 0,
       };
       dbg.push(entry);
     }

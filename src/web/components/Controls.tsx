@@ -13,6 +13,8 @@ interface ControlsProps {
   ignorePriorityEnabled: boolean;
   onToggleIgnoreSpriteLimit: () => void;
   ignoreSpriteLimitEnabled: boolean;
+  onToggleBiosOnly: () => void;
+  biosOnlyEnabled: boolean;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -28,6 +30,8 @@ export const Controls: React.FC<ControlsProps> = ({
   ignorePriorityEnabled,
   onToggleIgnoreSpriteLimit,
   ignoreSpriteLimitEnabled,
+  onToggleBiosOnly,
+  biosOnlyEnabled,
 }) => {
   return (
     <div className="controls">
@@ -48,6 +52,9 @@ export const Controls: React.FC<ControlsProps> = ({
       </button>
       <button onClick={onToggleIgnoreSpriteLimit} disabled={!isRomLoaded}>
         {ignoreSpriteLimitEnabled ? 'Sprite Limit: OFF' : 'Sprite Limit: ON'}
+      </button>
+      <button onClick={onToggleBiosOnly}>
+        {biosOnlyEnabled ? 'BIOS-only: ON' : 'BIOS-only: OFF'}
       </button>
     </div>
   );

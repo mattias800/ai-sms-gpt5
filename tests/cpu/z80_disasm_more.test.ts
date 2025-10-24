@@ -48,6 +48,7 @@ describe('Z80 disassembler additional coverage', (): void => {
     expect(disassembleOne(rd, 0x030e).text).toBe('SBC HL,DE');
     expect(disassembleOne(rd, 0x0310).text).toBe('RRD');
     expect(disassembleOne(rd, 0x0312).text).toBe('RLD');
+    // ED 00 is undocumented but still valid to disassemble
     expect(disassembleOne(rd, 0x0314).text).toBe('ED 00');
   });
 

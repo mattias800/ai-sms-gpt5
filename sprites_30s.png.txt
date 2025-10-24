@@ -1,0 +1,40 @@
+spritePalette[16..31]=0x00 0x10 0x34 0x38 0x06 0x1b 0x2f 0x3f 0x3d 0x3e 0x01 0x03 0x0b 0x0f 0x00 0x3f
+spriteAttrBase=0x3f00, spritePatternBase=0x2000, spriteSize=16, spriteMag=false
+1|spr0: Y=18 X=80 P=6
+2|spr1: Y=18 X=88 P=8
+3|spr2: Y=28 X=80 P=26
+4|spr3: Y=28 X=88 P=28
+5|spr4: Y=38 X=80 P=46
+6|spr5: Y=38 X=88 P=48
+7|spr6: Y=e0 X=80 P=40
+8|spr7: Y=e0 X=88 P=42
+9|spr8: Y=e0 X=90 P=44
+10|spr9: Y=e0 X=e0 P=ac
+11|spr10: Y=e0 X=e0 P=ac
+12|spr11: Y=e0 X=e0 P=ac
+13|spr12: Y=e0 X=e0 P=ac
+14|spr13: Y=e0 X=e0 P=ac
+15|spr14: Y=e0 X=e0 P=ac
+16|spr15: Y=e0 X=e0 P=ac
+17|spr16: Y=e0 X=e0 P=ac
+18|spr17: Y=e0 X=e0 P=ac
+19|spr18: Y=e0 X=e0 P=ac
+20|spr19: Y=e0 X=e0 P=ac
+21|spr20: Y=e0 X=e0 P=ac
+22|spr21: Y=e0 X=e0 P=ac
+23|spr22: Y=e0 X=e0 P=ac
+24|spr23: Y=e0 X=e0 P=ac
+Visible sprite pattern probe:
+  spr0: pn=6 baseTileAddr=0x20c0 nonZero=true bytes=00 00 00 00 03 00 00 00 07 03 03 00 0f 07 07 00 0f 00 00 07 09 00 00 07 0f 06 00 01 0e 06 00 01
+  spr1: pn=8 baseTileAddr=0x2100 nonZero=true bytes=00 00 00 00 00 00 00 00 80 00 00 00 c0 80 80 00 c0 80 80 00 c0 80 80 00 c0 80 80 00 c0 80 80 00
+  spr2: pn=26 baseTileAddr=0x24c0 nonZero=true bytes=04 03 00 00 0f 03 03 00 1f 0f 0f 00 3f 1f 1f 00 6c 2c 0c 13 7e 36 00 01 77 27 07 08 3b 1b 03 04
+  spr3: pn=28 baseTileAddr=0x2500 nonZero=true bytes=c0 80 00 00 40 80 00 00 f0 c0 c0 00 f8 f0 f0 00 f8 f0 f0 00 fc f8 f8 00 fc f8 f8 00 fe fc fc 00
+  spr4: pn=46 baseTileAddr=0x28c0 nonZero=true bytes=0d 04 00 02 0f 06 00 00 07 02 00 00 03 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  spr5: pn=48 baseTileAddr=0x2900 nonZero=true bytes=ba b8 38 44 fa f8 78 04 fa f8 78 04 b6 b4 30 48 c4 40 00 38 fc 30 00 00 78 00 00 00 00 00 00 00
+vdp.prioMaskPixels=0
+vdp.spritePixelsDrawn=331
+vdp.spritePixelsMaskedByPriority=0
+vdp.spriteLinesSkippedByLimit=0
+vdp.perLineLimitHitLines=0
+vdp.activeSprites=64
+drawnPixels=331

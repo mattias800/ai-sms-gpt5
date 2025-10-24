@@ -1,0 +1,16 @@
+f=10 PC=0369 R0=34 R1=a0 R7(bg)=00 display=false
+f=20 PC=036c R0=34 R1=a0 R7(bg)=00 display=false
+f=30 PC=036c R0=34 R1=a0 R7(bg)=00 display=false
+f=40 PC=036a R0=34 R1=a0 R7(bg)=00 display=false
+f=50 PC=0369 R0=34 R1=a0 R7(bg)=00 display=false
+f=60 PC=0369 R0=34 R1=a0 R7(bg)=00 display=false
+f=70 PC=036c R0=34 R1=a0 R7(bg)=00 display=false
+f=80 PC=036c R0=34 R1=a0 R7(bg)=00 display=false
+f=90 PC=036a R0=34 R1=a0 R7(bg)=00 display=false
+f=100 PC=0369 R0=34 R1=a0 R7(bg)=00 display=false
+f=110 PC=04c0 R0=34 R1=a0 R7(bg)=00 display=false
+f=120 PC=042b R0=34 R1=e0 R7(bg)=00 display=true
+Final VDP: R0=34 R1=e0 R2=ff R3=ff R4=ff R5=ff R6=fb R7=00 R8=00 R9=00 R10=ff display=true border=00 vblankCount=120
+CRAM[0..15]=00 3f 3e 3f 30 30 38 3f 37 3f 00 00 00 00 00 00
+NameTable@R2 base=7 sample=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SpriteAttr@3f00 sample=38 40 48 50 38 40 48 50 38 40 48 50 38 40 48 50

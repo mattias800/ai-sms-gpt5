@@ -15,7 +15,8 @@ Architecture (high-level)
 - cpu/z80: Full Z80 (prefixes, IX/IY, IM0/1/2, HALT, EI delay, R/I).
 - bus: 64KB map, WRAM + mirror, Sega mapper, IO ports (VDP/PSG/controllers/IO control).
 - vdp: 16KB VRAM, 32B CRAM, registers, control/data ports, status, line & vblank IRQs, rendering (BG+sprites, 8-per-line limit).
-- psg: SN76489 deterministic audio.
+- PSG: SN76489 deterministic audio.
+- Audio capture: headless BIOS jingle render to WAV + automated tone verification (see scripts/render_bios_audio.ts and tests/audio/bios_jingle.test.ts).
 - input: controllers and Pause->NMI.
 - scheduler: master time in Z80 cycles; tick VDP/PSG; handle IRQ/NMI.
 - machine: orchestrates components; frame stepping; serialization; traces.
