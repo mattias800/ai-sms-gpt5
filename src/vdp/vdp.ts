@@ -500,21 +500,21 @@ if ((p & 0xff) === 0xbf || (p & 0xff) === 0xdf) {
 
       // At the end of each scanline, handle line interrupt counter before advancing to the next line index.
       // Behavior: when line IRQs are enabled (R0 bit4), the counter decrements every scanline; when it underflows
-      // from 0 to 0xFF, it reloads from R10 and asserts the IRQ line. Writing R10 sets the reload value,
-      // but the current counter keeps ticking until it underflows (we already set s.lineCounter on R10 writes as a simplification).
+      // from 0 to 0xFF (or reaches 0), it reloads from R10 and asserts the IRQ line.
       const lineIrqEnabled = ((s.regs[0] ?? 0) & 0x10) !== 0;
       if (lineIrqEnabled) {
-        if (s.lineCounter === 0) {
-          // Underflow on this line -> generate line IRQ and reload from R10
-          s.lineCounter = s.regs[10] ?? 0;
+        // Decrement counter every scanline
+        s.lineCounter = (s.lineCounter - 1) & 0xff;
+        // Check for underflow (wrapped from 0 to 0xFF means we just decremented from 0)
+        if (s.lineCounter === 0xff) {
+          // Underflow detected -> reload from R10 and assert IRQ
+          s.lineCounter = (s.regs[10] ?? 0) & 0xff;
           // Assert IRQ line for line interrupt (only if IRQs are globally enabled in R1? On SMS, line IRQ is maskable like vblank.)
           // Keep behavior unified: assert wire; CPU side will decide acceptance.
           s.irqVLine = true;
           s.irqAssertCount = (s.irqAssertCount + 1) | 0;
           // Mark a line event in status bit 5 for tooling
           s.status |= 0x20;
-        } else {
-          s.lineCounter = (s.lineCounter - 1) & 0xff;
         }
       } else {
         // When disabled, keep the counter stable (do not decrement) so enabling later resumes predictable behavior

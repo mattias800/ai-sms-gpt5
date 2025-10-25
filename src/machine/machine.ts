@@ -87,6 +87,8 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
   let lastIrqGatePc = 0;
   // Dynamic per-cycle hook (optional; used by tools/web diagnostics)
   let dynamicCycleHook: ((cycle: number) => void) | null = null;
+  // Track VDP IRQ state to avoid requesting on every cycle
+  let prevVdpIrqState = false;
 
   const cpu = createZ80({
     bus,
@@ -120,7 +122,12 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
     onCycle: (_cy) => {
       vdp.tickCycles(1);
       psg.tickCycles(1);
-      if (vdp.hasIRQ()) cpu.requestIRQ();
+      // Only request IRQ on transition from false to true (rising edge)
+      const currVdpIrqState = vdp.hasIRQ();
+      if (currVdpIrqState && !prevVdpIrqState) {
+        cpu.requestIRQ();
+      }
+      prevVdpIrqState = currVdpIrqState;
       if (dynamicCycleHook) dynamicCycleHook(1);
     },
     debugHooks: {
