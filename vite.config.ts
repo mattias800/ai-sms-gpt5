@@ -17,13 +17,14 @@ export default defineConfig({
     {
       name: 'copy-bios-files',
       writeBundle() {
-        const biosFiles = ['mpr-10052.rom', 'bios13fx.sms'];
+        const biosFiles = ['third_party/mame/roms/sms/mpr-12808.ic2', 'mpr-10052.rom', 'bios13fx.sms'];
         biosFiles.forEach(file => {
           const srcPath = path.resolve(__dirname, file);
-          const destPath = path.resolve(__dirname, 'dist-web', file);
+          const fileName = path.basename(file);
+          const destPath = path.resolve(__dirname, 'dist-web', fileName);
           if (existsSync(srcPath)) {
             copyFileSync(srcPath, destPath);
-            console.log(`Copied ${file} to dist-web`);
+            console.log(`Copied ${file} to dist-web/${fileName}`);
           }
         });
       },

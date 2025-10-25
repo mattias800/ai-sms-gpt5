@@ -146,6 +146,12 @@ export const createMachine = (cfg: MachineConfig): IMachine => {
     initializeSMS({ cpu, vdp, psg, bus });
     // Enable interrupts after initialization - critical for game execution!
     enableSMSInterrupts(cpu);
+  } else {
+    // BIOS mode: Initialize minimal VDP state
+    // Set R1 with display enable (bit 6) so the BIOS's own display output is rendered
+    vdp.writePort(0xBF, 0x40); // Write value (display enable)
+    vdp.writePort(0xBF, 0x81); // Write register 1
+    // The BIOS will initialize its own palette and display (black background + SEGA logo)
   }
 
   // Maintain a running cycle budget so we don't drift when an instruction overshoots the per-call budget

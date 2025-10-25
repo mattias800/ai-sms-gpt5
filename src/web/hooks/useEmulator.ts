@@ -56,8 +56,8 @@ export const useEmulator = ({
       try {
         const cartridge = romData ? { rom: romData } : undefined;
 
-        // Try to fetch a BIOS over HTTP: prefer mpr-10052.rom, then bios13fx.sms
-        const tryUrls = ['mpr-10052.rom', 'bios13fx.sms'];
+        // Try to fetch a BIOS over HTTP: prefer mpr-12808.ic2 (MAME sms), then legacy mpr-10052.rom, then bios13fx.sms
+        const tryUrls = ['mpr-12808.ic2', 'mpr-10052.rom', 'bios13fx.sms'];
         let loadedBiosData: Uint8Array | null = biosData ?? null;
         if (!loadedBiosData) {
           for (const url of tryUrls) {
@@ -90,7 +90,8 @@ export const useEmulator = ({
         }
 
         if (loadedBiosData && cartridge) {
-          const machine = createMachine({ cart: cartridge, useManualInit: false, bus: { bios: loadedBiosData } });
+          // Game ROM with BIOS: use manual init to skip BIOS and boot game directly
+          const machine = createMachine({ cart: cartridge, useManualInit: true, bus: { bios: loadedBiosData } });
           machineRef.current = machine;
         } else if (loadedBiosData && !cartridge) {
           // BIOS-only mode: create machine with null cart and BIOS
@@ -102,6 +103,9 @@ export const useEmulator = ({
         } else {
           throw new Error('[web] Cannot initialize: no ROM and no BIOS');
         }
+
+        // Clear audio sample buffer when initializing new machine
+        sampleBufferRef.current = [];
 
         if (cancelled) return;
         const machine = machineRef.current!;
@@ -538,6 +542,9 @@ export const useEmulator = ({
       const vdp = machineRef.current.getVDP();
       const psg = machineRef.current.getPSG();
       if (psg.reset) psg.reset();
+
+      // Clear audio sample buffer to prevent stale samples
+      sampleBufferRef.current = [];
 
       // Clear controller state
       keyStateRef.current = {

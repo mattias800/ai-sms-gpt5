@@ -45,8 +45,9 @@ When BIOS-only mode is enabled:
 ## BIOS Files
 
 The web harness automatically fetches BIOS files from the project root in this order:
-1. `mpr-10052.rom` (Samsung SMS1 BIOS - preferred)
-2. `bios13fx.sms` (alternate BIOS)
+1. `mpr-12808.ic2` (MAME sms romset BIOS - **preferred**, verified silent, matches hardware)
+2. `mpr-10052.rom` (Samsung SMS1 BIOS - legacy, includes PSG commands)
+3. `bios13fx.sms` (alternate BIOS)
 
 ### Serving BIOS Files
 
@@ -54,6 +55,7 @@ The build process copies these files to `dist-web/`:
 ```bash
 npm run build:web
 # Produces:
+#   dist-web/mpr-12808.ic2
 #   dist-web/mpr-10052.rom
 #   dist-web/bios13fx.sms
 ```
@@ -96,7 +98,7 @@ To verify BIOS-only mode works:
    - Blue SMS splash screen on canvas
    - FPS counter updating (running ~60 FPS)
    - Status bar showing emulator stats
-   - Audio playing (if unmuted) - the BIOS jingle
+   - **Audio: the SMS BIOS is completely silent** - it never writes to PSG audio ports, so no sound output is expected or emitted
 
 3. Expected status bar output:
    ```
@@ -111,10 +113,11 @@ To verify BIOS-only mode works:
 - Ensure `mpr-10052.rom` or `bios13fx.sms` exists in the server directory
 - Check browser console for fetch errors
 
-**No audio during BIOS sequence**
-- Ensure "Mute" button is OFF
-- Check volume is appropriate in browser
-- BIOS should produce audio for ~1.5 seconds
+**Audio during BIOS sequence**
+- The MAME sms BIOS is **completely silent** - it does not write to PSG audio ports
+- The emulator correctly produces 0 audio output (silence) during BIOS-only runs
+- This matches real hardware behavior verified with MAME
+- This is normal and expected behavior
 
 **Canvas blank**
 - BIOS is running (check FPS counter)

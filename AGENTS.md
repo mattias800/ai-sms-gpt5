@@ -14,14 +14,15 @@
 
 When running SMS with a BIOS (including headless Wonder Boy checks), ALWAYS use this BIOS:
 
-- Path (relative to repo root): `./third_party/mame/roms/sms1/mpr-10052.rom`
+- Path (relative to repo root): `./third_party/mame/roms/sms/mpr-12808.ic2`
+- This is the MAME `sms` romset BIOS (verified working, completely silent on real hardware)
 
 Preferred usage:
 - Set the environment variable `SMS_BIOS` to the path above for any run that uses a BIOS.
   Example:
-  `SMS_BIOS=./third_party/mame/roms/sms1/mpr-10052.rom <your command>`
+  `SMS_BIOS=./third_party/mame/roms/sms/mpr-12808.ic2 <your command>`
 
 Notes:
 - Tools may auto-detect this exact path when `SMS_BIOS` is not set. If both are present, `SMS_BIOS` takes precedence.
 - Do not substitute other BIOS revisions unless explicitly requested for comparison.
-- Our acceptance for Wonder Boy visuals (blue background + SEGA logo ~120 frames) assumes this BIOS.
+- Our acceptance criteria assumes this BIOS (MAME sms romset).

@@ -62,6 +62,7 @@ export const createPSG = (): IPSG => {
   const write = (val: number): void => {
     const b = val & 0xff;
 
+
     // Debug logging (guarded)
     if (PSG_DEBUG) {
       writeCount++;
